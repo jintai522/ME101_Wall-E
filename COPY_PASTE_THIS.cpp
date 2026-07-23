@@ -212,7 +212,7 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
-void scoopermove ( double scooperSpeed,int & run_state)
+void scoopermove ( double scooperSpeed, int & scoop_state)
   //go back a bit
   //bring down scooper
   //go foward
@@ -248,7 +248,8 @@ void scoopermove ( double scooperSpeed,int & run_state)
   wait(1, seconds);
   Scooper8.stop();
 
-  run_state = 3; 
+  scoop_state++; 
+  
 }
 
 void straightDrive(double distance, int speed,int & run_state)
@@ -302,10 +303,7 @@ void userInter(int & run_state)
 }
 
 int main() 
-{
-  configureAllSensors();
-  int run_state = 1;
-  /*
+ /*
     0 close program
     1 run pattern
     2 run scooping
@@ -313,6 +311,11 @@ int main()
     4 run dumping
   */
 
+{
+  configureAllSensors();
+  int run_state = 1;
+  int scoop_count = 0; 
+ 
   while (!Brain.buttonCheck.pressing()) 
   {}
   while (Brain.buttonCheck.pressing())
@@ -324,9 +327,9 @@ int main()
     {
       straightDrive(1000, 30, run_state);
     }
-    else if (run_state == 2)
+    else if (run_state == 2 && scoop_count <3)
     {
-     scoopermove(SCOOPSPEED, run_state);
+     scoopermove(SCOOPSPEED, scoop_count);
     }
     else if (run_state == 3)
     {
