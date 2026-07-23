@@ -282,8 +282,27 @@ void userInter(int & run_state)
   //out put whats its doing during the state
 }
 
-  double scooperDegree = 67; 
-  double scooperSpeed = 10; 
+void compress(double degree, int speed, double current_max, int & run_state)
+{
+  MotorCompress9.resetPosition();
+  if (degree > 0)
+    MotorCompress9.spin(forward, speed, percent);
+  else
+    MotorCompress9.spin(reverse, speed, percent);
+
+  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
+  {}
+
+  MotorCompress9.stop(brake);
+  run_state = 4;
+}
+
+  double scooperDegree = 67;
+  double scooperSpeed = 10;
+
+  const double COMPRESS_DEGREE = -4000;
+  const int COMPRESS_SPEED = 75;
+  const double COMPRESS_CURRENT_MAX = 0.9;
 
 int main() 
 {
@@ -313,6 +332,10 @@ int main()
     else if (run_state == 2)
     {
      scoopermove(scooperDegree,scooperSpeed,run_state);
+    }
+    else if (run_state == 3)
+    {
+      compress(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, run_state);
     }
   }
 
