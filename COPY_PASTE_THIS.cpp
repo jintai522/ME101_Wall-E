@@ -32,9 +32,9 @@ motor MotorDoor3 = motor(PORT3, false);
 motor MotorCompress9 = motor(PORT9, false);
 motor LeftMotor = motor(PORT7, false);
 motor RightMotor = motor(PORT12, true);
-motor MotorScoop11 = motor(PORT11, false);
-optical Optical8 = optical(PORT8);
 distance Distance2 = distance(PORT2);
+optical Optical8 = optical(PORT1);
+motor Scooper8 = motor(PORT8, false);
 
 
 // generating and setting random seed
@@ -121,6 +121,7 @@ using namespace vex;
 const double WHEEL_C = 200;//mm
 motor_group driveMotor(LeftMotor,RightMotor);
 
+
 void configureAllSensors()
 {
   Brain.Screen.print("Calibrating...");
@@ -192,7 +193,7 @@ bool scoopDetect(double min, double max, int & run_state)
 {
   if(Distance2.objectDistance(mm) < max and Distance2.objectDistance(mm) > min)
   {
-    //Show on screen that object was detected
+    Brain.Screen.print("Object Detected");
     run_state = 2;
     return true;
   }
@@ -202,8 +203,51 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
+double scooperTime(double scooperdegree, double scooperspeed)
+{
+  double result = scooperdegree / (scooperspeed / 100 * 120 / 60 * 360);
+  return result;
+}
+
+void scoopermove (double scooperDegree, double scooperSpeed,int & run_state)
+  //go back a bit
+  //bring down scooper
+  //go foward
+  //bring up scooper
+{
+  LeftMotor.spin(reverse,50,percent);
+  RightMotor.spin(reverse,50,percent);
+  wait(1,seconds);
+  LeftMotor.stop();
+  RightMotor.stop();
+
+  wait(0.5,seconds);
+
+  Scooper8.spin(forward,scooperSpeed,percent);
+  wait(4.4, seconds);
+  Scooper8.stop();
+
+  wait(0.5,seconds);
+
+  LeftMotor.spin(forward,100,percent);
+  RightMotor.spin(forward,100,percent);
+  wait(2,seconds);
+  LeftMotor.stop();
+  RightMotor.stop();
+
+  Scooper8.spin(reverse,67,percent);
+  wait(0.8, seconds);
+  Scooper8.stop();
+
+  run_state = 3; 
+  
+}
+
+
+
+
 const double STRAIGHT_KP = 2;
-void straightDrive(double distance, int speed,int run_state)
+void straightDrive(double distance, int speed,int & run_state)
 {
   BrainInertial.resetRotation();
   LeftMotor.resetPosition();
@@ -212,7 +256,7 @@ void straightDrive(double distance, int speed,int run_state)
   while 
   (
   ((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance)
-  or !(scoopDetect(20,20,run_state))
+  and !(scoopDetect(10,30,run_state))
   )
   {
     double heading = BrainInertial.rotation(degrees);
@@ -226,19 +270,14 @@ void straightDrive(double distance, int speed,int run_state)
   driveMotor.stop(brake);
 }
 
-void scoopRobot()
-{
-  //go back a bit
-  //bring down scooper
-  //go foward
-  //bring up scooper
-}
-
 void userInter(int & run_state)
 {
   Brain.Screen.clearScreen();
   //out put whats its doing during the state
 }
+
+  double scooperDegree = 67; 
+  double scooperSpeed = 10; 
 
 int main() 
 {
@@ -251,6 +290,9 @@ int main()
     3 run compress
     4 run dumping
   */
+
+  
+  
   while (!Brain.buttonCheck.pressing()) 
   {}
   while (Brain.buttonCheck.pressing())
@@ -260,11 +302,11 @@ int main()
   {
     if (run_state == 1)
     {
-      straightDrive(67, 30, run_state);
+      straightDrive(1000, 30, run_state);
     }
     else if (run_state == 2)
     {
-
+     scoopermove(scooperDegree,scooperSpeed,run_state);
     }
   }
 
