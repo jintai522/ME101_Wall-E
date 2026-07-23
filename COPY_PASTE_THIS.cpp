@@ -234,7 +234,7 @@ void scoopermove ( double scooperSpeed, int & scoop_state)
 
   LeftMotor.spin(forward,100,percent);
   RightMotor.spin(forward,100,percent);
-  wait(1.4,seconds);
+  wait(1,seconds);
    LeftMotor.spin(forward,67,percent);
   RightMotor.spin(forward,67,percent);
   wait(0.5,seconds);
