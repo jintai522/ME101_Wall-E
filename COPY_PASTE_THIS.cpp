@@ -117,10 +117,7 @@ PROJECT:
 */
 
 using namespace vex;
-
-const double WHEEL_C = 200;//mm
 motor_group driveMotor(LeftMotor,RightMotor);
-
 
 void configureAllSensors()
 {
@@ -140,7 +137,6 @@ https://lucykim0907-byte.github.io/Pid-build-log-by-Jaehyeon-Shin/pid_portfolio.
 P is the proportional, which is error
   (how far off)
 */
-const double KP = 1.8;
 void rotateRobot(double targetAngle, int speed)
 {
   double error = 676; // change if needed
@@ -151,7 +147,7 @@ void rotateRobot(double targetAngle, int speed)
     double currentAngle = BrainInertial.rotation(degrees);
     error = targetAbsolute - currentAngle;
 
-    double power = KP * error;
+    double power = ROTATE_KP * error;
     if (power > speed)
     {
       power = speed;
@@ -246,13 +242,8 @@ void scoopermove (double scooperDegree, double scooperSpeed,int & run_state)
   Scooper8.stop();
 
   run_state = 3; 
-  
 }
 
-
-
-
-const double STRAIGHT_KP = 2;
 void straightDrive(double distance, int speed,int & run_state)
 {
   BrainInertial.resetRotation();
@@ -276,14 +267,42 @@ void straightDrive(double distance, int speed,int & run_state)
   driveMotor.stop(brake);
 }
 
+void compress(double degree, int speed, double current_max, int & run_state)
+{
+  MotorCompress9.resetPosition();
+  MotorCompress9.spin(reverse, speed, percent);
+  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
+  {}
+  MotorCompress9.stop(brake);
+
+  wait(1, seconds);
+
+  MotorCompress9.resetPosition();
+  MotorCompress9.spin(forward, speed, percent);
+  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
+  {}
+  MotorCompress9.stop(brake);
+
+  run_state = 4;
+}
+
 void userInter(int & run_state)
 {
   Brain.Screen.clearScreen();
   //out put whats its doing during the state
 }
 
-  double scooperDegree = 67; 
-  double scooperSpeed = 10; 
+const double WHEEL_C = 200;//mm
+
+const double ROTATE_KP = 1.8;
+const double STRAIGHT_KP = 2;
+
+const double SCOOPDEGREE = 67;
+const double SCOOPSPEED = 10;
+
+const double COMPRESS_DEGREE = -4000;
+const int COMPRESS_SPEED = 75;
+const double COMPRESS_CURRENT_MAX = 0.9;
 
 int main() 
 {
@@ -297,8 +316,6 @@ int main()
     4 run dumping
   */
 
-  
-  
   while (!Brain.buttonCheck.pressing()) 
   {}
   while (Brain.buttonCheck.pressing())
@@ -312,7 +329,11 @@ int main()
     }
     else if (run_state == 2)
     {
-     scoopermove(scooperDegree,scooperSpeed,run_state);
+     scoopermove(SCOOPDEGREE, SCOOPSPEED, run_state);
+    }
+    else if (run_state == 3)
+    {
+      compress(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, run_state);
     }
   }
 
