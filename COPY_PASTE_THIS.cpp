@@ -217,26 +217,32 @@ void scoopermove (double scooperDegree, double scooperSpeed,int & run_state)
 {
   LeftMotor.spin(reverse,50,percent);
   RightMotor.spin(reverse,50,percent);
-  wait(1,seconds);
+  wait(1.5,seconds);
   LeftMotor.stop();
   RightMotor.stop();
 
   wait(0.5,seconds);
 
   Scooper8.spin(forward,scooperSpeed,percent);
-  wait(4.4, seconds);
+  wait(4, seconds);
   Scooper8.stop();
 
   wait(0.5,seconds);
 
   LeftMotor.spin(forward,100,percent);
   RightMotor.spin(forward,100,percent);
-  wait(2,seconds);
+  wait(1.4,seconds);
+   LeftMotor.spin(forward,67,percent);
+  RightMotor.spin(forward,67,percent);
+  wait(0.5,seconds);
+  LeftMotor.spin(forward,23,percent);
+  RightMotor.spin(forward,23,percent);
+  wait(0.5,seconds);
   LeftMotor.stop();
   RightMotor.stop();
 
-  Scooper8.spin(reverse,67,percent);
-  wait(0.8, seconds);
+  Scooper8.spin(reverse,47,percent);
+  wait(1, seconds);
   Scooper8.stop();
 
   run_state = 3; 
