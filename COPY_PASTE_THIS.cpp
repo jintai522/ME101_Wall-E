@@ -117,6 +117,20 @@ PROJECT:
 */
 
 using namespace vex;
+
+const double WHEEL_C = 200;//mm
+
+const double ROTATE_KP = 1.8;
+const double STRAIGHT_KP = 2;
+
+const double SCOOPDEGREE = 67;
+const double SCOOPSPEED = 10;
+
+const double COMPRESS_DEGREE = -4000;
+const int COMPRESS_SPEED = 75;
+const double COMPRESS_CURRENT_MAX = 0.9;
+
+
 motor_group driveMotor(LeftMotor,RightMotor);
 
 void configureAllSensors()
@@ -291,18 +305,6 @@ void userInter(int & run_state)
   Brain.Screen.clearScreen();
   //out put whats its doing during the state
 }
-
-const double WHEEL_C = 200;//mm
-
-const double ROTATE_KP = 1.8;
-const double STRAIGHT_KP = 2;
-
-const double SCOOPDEGREE = 67;
-const double SCOOPSPEED = 10;
-
-const double COMPRESS_DEGREE = -4000;
-const int COMPRESS_SPEED = 75;
-const double COMPRESS_CURRENT_MAX = 0.9;
 
 int main() 
 {
