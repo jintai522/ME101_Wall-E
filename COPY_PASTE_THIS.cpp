@@ -123,7 +123,6 @@ const double WHEEL_C = 200;//mm
 const double ROTATE_KP = 1.8;
 const double STRAIGHT_KP = 2;
 
-const double SCOOPDEGREE = 67;
 const double SCOOPSPEED = 10;
 
 const double COMPRESS_DEGREE = -4000;
@@ -213,21 +212,15 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
-double scooperTime(double scooperdegree, double scooperspeed)
-{
-  double result = scooperdegree / (scooperspeed / 100 * 120 / 60 * 360);
-  return result;
-}
-
-void scoopermove (double scooperDegree, double scooperSpeed,int & run_state)
+void scoopermove ( double scooperSpeed,int & run_state)
   //go back a bit
   //bring down scooper
   //go foward
   //bring up scooper
 {
-  LeftMotor.spin(reverse,50,percent);
-  RightMotor.spin(reverse,50,percent);
-  wait(1.5,seconds);
+  LeftMotor.spin(reverse,15,percent);
+  RightMotor.spin(reverse,15,percent);
+  wait(2.8,seconds);
   LeftMotor.stop();
   RightMotor.stop();
 
@@ -281,6 +274,8 @@ void straightDrive(double distance, int speed,int & run_state)
   driveMotor.stop(brake);
 }
 
+
+
 void compress(double degree, int speed, double current_max, int & run_state)
 {
   MotorCompress9.resetPosition();
@@ -297,7 +292,7 @@ void compress(double degree, int speed, double current_max, int & run_state)
   {}
   MotorCompress9.stop(brake);
 
-  run_state = 4;
+  run_state = 0;
 }
 
 void userInter(int & run_state)
@@ -331,7 +326,7 @@ int main()
     }
     else if (run_state == 2)
     {
-     scoopermove(SCOOPDEGREE, SCOOPSPEED, run_state);
+     scoopermove(SCOOPSPEED, run_state);
     }
     else if (run_state == 3)
     {
