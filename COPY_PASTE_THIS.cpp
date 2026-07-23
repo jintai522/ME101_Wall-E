@@ -118,7 +118,24 @@ PROJECT:
 
 using namespace vex;
 
-const double WHEEL_C = 200;//mm
+const double WHEEL_C = 200; //mm
+
+const double ROTATE_KP = 1.8;
+const double STRAIGHT_KP = 2;
+
+const double SCOOPSPEED = 10;
+
+const double COMPRESS_DEGREE = -4000;
+const int COMPRESS_SPEED = 75;
+const double COMPRESS_CURRENT_MAX = 0.9;
+
+const double FIELD_WIDTH = 1000;   // mm, field width (direction rows shift across)
+const int NUM_ROWS = 5;            // reasonable zigzag density for the field size
+const double SHIFT_DISTANCE = FIELD_WIDTH / (NUM_ROWS - 1); // small step, not another full row
+const int PATH_SPEED = 30;
+const double TURN_ANGLE = 90;      // degrees; flip sign below if left/right come out reversed
+const int GREEN_BRIGHTNESS_MIN = 30; // percent; tune to how bright your tape reads
+
 motor_group driveMotor(LeftMotor,RightMotor);
 
 
@@ -140,7 +157,6 @@ https://lucykim0907-byte.github.io/Pid-build-log-by-Jaehyeon-Shin/pid_portfolio.
 P is the proportional, which is error
   (how far off)
 */
-const double KP = 1.8;
 void rotateRobot(double targetAngle, int speed)
 {
   double error = 676; // change if needed
@@ -151,7 +167,7 @@ void rotateRobot(double targetAngle, int speed)
     double currentAngle = BrainInertial.rotation(degrees);
     error = targetAbsolute - currentAngle;
 
-    double power = KP * error;
+    double power = ROTATE_KP * error;
     if (power > speed)
     {
       power = speed;
@@ -209,15 +225,15 @@ double scooperTime(double scooperdegree, double scooperspeed)
   return result;
 }
 
-void scoopermove (double scooperDegree, double scooperSpeed,int & run_state)
+void scoopermove (double scooperSpeed,int & run_state)
   //go back a bit
   //bring down scooper
   //go foward
   //bring up scooper
 {
-  LeftMotor.spin(reverse,50,percent);
-  RightMotor.spin(reverse,50,percent);
-  wait(1.5,seconds);
+  LeftMotor.spin(reverse,15,percent);
+  RightMotor.spin(reverse,15,percent);
+  wait(2.8,seconds);
   LeftMotor.stop();
   RightMotor.stop();
 
@@ -252,7 +268,6 @@ void scoopermove (double scooperDegree, double scooperSpeed,int & run_state)
 
 
 
-const double STRAIGHT_KP = 2;
 void straightDrive(double distance, int speed,int & run_state)
 {
   BrainInertial.resetRotation();
@@ -282,13 +297,12 @@ void userInter(int & run_state)
   //out put whats its doing during the state
 }
 
-void pathDrive(double distance, int speed)
+void driveUntilGreen(int speed, int & run_state)
 {
   BrainInertial.resetRotation();
-  LeftMotor.resetPosition();
-  RightMotor.resetPosition();
 
-  while (((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance))
+  while (!(Optical8.color() == colorType::green and Optical8.brightness() > GREEN_BRIGHTNESS_MIN)
+         and !(scoopDetect(10,30,run_state)))
   {
     double heading = BrainInertial.rotation(degrees);
     double error = 0 - heading; // target heading is 0 (straight)
@@ -301,35 +315,33 @@ void pathDrive(double distance, int speed)
   driveMotor.stop(brake);
 }
 
-const double FIELD_LENGTH = 1000;  // mm, field length (direction each row drives)
-const double FIELD_WIDTH = 1000;   // mm, field width (direction rows shift across)
-const int NUM_ROWS = 5;            // reasonable zigzag density for the field size
-const double SHIFT_DISTANCE = FIELD_WIDTH / (NUM_ROWS - 1); // small step, not another full row
-const int PATH_SPEED = 30;
-const double TURN_ANGLE = 90;      // degrees; flip sign below if left/right come out reversed
-
-void pathFind()
+void pathFind(int & run_state)
 {
-  int turnSign = -1; // -1 = left, 1 = right; flip if turns come out reversed
+  static int row = 0; // persists across calls so we resume where we left off after a scoop/compress
 
-  for (int row = 0; row < NUM_ROWS; row++)
+  for (; row < NUM_ROWS; row++)
   {
-    pathDrive(FIELD_LENGTH, PATH_SPEED);
+    driveUntilGreen(PATH_SPEED, run_state);
+    if (run_state == 2) return; // object detected mid-row; scoopermove/compress will run, then we resume this row
 
     if (row < NUM_ROWS - 1) // no shift/turn needed after the last row
     {
+      int turnSign = (row % 2 == 0) ? -1 : 1; // alternate direction each row transition (L-L, R-R, L-L, ...)
       rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
-      pathDrive(SHIFT_DISTANCE, PATH_SPEED);
+      straightDrive(SHIFT_DISTANCE, PATH_SPEED, run_state);
+      if (run_state == 2) return;
       rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
-      turnSign = -turnSign; // alternate direction each row transition (L-L, R-R, L-L, ...)
     }
   }
+
+  row = 0; // reset in case pathFind is ever run again
+  run_state = 0; // covered every row with no more objects found
 }
 
 void compress(double degree, int speed, double current_max, int & run_state)
 {
   MotorCompress9.resetPosition();
-  MotorCompress9.spin(forward, speed, percent);
+  MotorCompress9.spin(reverse, speed, percent);
   while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
   {}
   MotorCompress9.stop(brake);
@@ -337,31 +349,45 @@ void compress(double degree, int speed, double current_max, int & run_state)
   wait(1, seconds);
 
   MotorCompress9.resetPosition();
-  MotorCompress9.spin(reverse, speed, percent);
+  MotorCompress9.spin(forward, speed, percent);
   while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
   {}
   MotorCompress9.stop(brake);
 
-  run_state = 4;
+  run_state = 1; // resume path finding
 }
-
-  double scooperDegree = 67;
-  double scooperSpeed = 10;
-
-  const double COMPRESS_DEGREE = -4000;
-  const int COMPRESS_SPEED = 75;
-  const double COMPRESS_CURRENT_MAX = 0.9;
 
 int main()
 {
   configureAllSensors();
+  int run_state = 1;
+  /*
+    0 close program
+    1 run pattern
+    2 run scooping
+    3 run compress
+  */
 
   while (!Brain.buttonCheck.pressing())
   {}
   while (Brain.buttonCheck.pressing())
   {}
 
-  pathFind();
+  while (run_state != 0)
+  {
+    if (run_state == 1)
+    {
+      pathFind(run_state);
+    }
+    else if (run_state == 2)
+    {
+      scoopermove(SCOOPSPEED, run_state);
+    }
+    else if (run_state == 3)
+    {
+      compress(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, run_state);
+    }
+  }
 
   Optical8.setLight(ledState::off);
   Brain.programStop();
