@@ -282,18 +282,66 @@ void userInter(int & run_state)
   //out put whats its doing during the state
 }
 
+void pathDrive(double distance, int speed)
+{
+  BrainInertial.resetRotation();
+  LeftMotor.resetPosition();
+  RightMotor.resetPosition();
+
+  while (((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance))
+  {
+    double heading = BrainInertial.rotation(degrees);
+    double error = 0 - heading; // target heading is 0 (straight)
+
+    double correction = STRAIGHT_KP * error;
+
+    LeftMotor.spin(forward, speed + correction, percent);
+    RightMotor.spin(forward, speed - correction, percent);
+  }
+  driveMotor.stop(brake);
+}
+
+const double FIELD_LENGTH = 1000;  // mm, field length (direction each row drives)
+const double FIELD_WIDTH = 1000;   // mm, field width (direction rows shift across)
+const int NUM_ROWS = 5;            // reasonable zigzag density for the field size
+const double SHIFT_DISTANCE = FIELD_WIDTH / (NUM_ROWS - 1); // small step, not another full row
+const int PATH_SPEED = 30;
+const double TURN_ANGLE = 90;      // degrees; flip sign below if left/right come out reversed
+
+void pathFind()
+{
+  int turnSign = -1; // -1 = left, 1 = right; flip if turns come out reversed
+
+  for (int row = 0; row < NUM_ROWS; row++)
+  {
+    pathDrive(FIELD_LENGTH, PATH_SPEED);
+
+    if (row < NUM_ROWS - 1) // no shift/turn needed after the last row
+    {
+      rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
+      pathDrive(SHIFT_DISTANCE, PATH_SPEED);
+      rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
+      turnSign = -turnSign; // alternate direction each row transition (L-L, R-R, L-L, ...)
+    }
+  }
+}
+
 void compress(double degree, int speed, double current_max, int & run_state)
 {
   MotorCompress9.resetPosition();
-  if (degree > 0)
-    MotorCompress9.spin(forward, speed, percent);
-  else
-    MotorCompress9.spin(reverse, speed, percent);
-
+  MotorCompress9.spin(forward, speed, percent);
   while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
   {}
-
   MotorCompress9.stop(brake);
+
+  wait(1, seconds);
+
+  MotorCompress9.resetPosition();
+  MotorCompress9.spin(reverse, speed, percent);
+  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
+  {}
+  MotorCompress9.stop(brake);
+
   run_state = 4;
 }
 
@@ -304,40 +352,16 @@ void compress(double degree, int speed, double current_max, int & run_state)
   const int COMPRESS_SPEED = 75;
   const double COMPRESS_CURRENT_MAX = 0.9;
 
-int main() 
+int main()
 {
   configureAllSensors();
-  int run_state = 1;
-  /*
-    0 close program
-    1 run pattern
-    2 run scooping
-    3 run compress
-    4 run dumping
-  */
 
-  
-  
-  while (!Brain.buttonCheck.pressing()) 
+  while (!Brain.buttonCheck.pressing())
   {}
   while (Brain.buttonCheck.pressing())
   {}
 
-  while(run_state != 0)
-  {
-    if (run_state == 1)
-    {
-      straightDrive(1000, 30, run_state);
-    }
-    else if (run_state == 2)
-    {
-     scoopermove(scooperDegree,scooperSpeed,run_state);
-    }
-    else if (run_state == 3)
-    {
-      compress(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, run_state);
-    }
-  }
+  pathFind();
 
   Optical8.setLight(ledState::off);
   Brain.programStop();
