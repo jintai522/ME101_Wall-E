@@ -141,7 +141,7 @@ void configureAllSensors()
   Brain.Screen.clearScreen();
   Brain.Screen.setCursor(1,1);
   BrainInertial.resetRotation();
-  Optical8.setLight(ledState::on);
+  Optical11.setLight(ledState::on);
 }
 /*
 PID Sources
@@ -218,6 +218,8 @@ void scoopermove ( double scooperSpeed, int & scoop_state)
   //go foward
   //bring up scooper
 {
+  scoop_state++;
+  
   LeftMotor.spin(reverse,15,percent);
   RightMotor.spin(reverse,15,percent);
   wait(2.8,seconds);
@@ -246,10 +248,7 @@ void scoopermove ( double scooperSpeed, int & scoop_state)
 
   Scooper8.spin(reverse,47,percent);
   wait(1, seconds);
-  Scooper8.stop();
-
-  scoop_state++; 
-  
+  Scooper8.stop(); 
 }
 
 void straightDrive(double distance, int speed,int & run_state)
@@ -327,9 +326,9 @@ int main()
     {
       straightDrive(1000, 30, run_state);
     }
-    else if (run_state == 2 && scoop_count <3)
+    else if (run_state == 2)
     {
-     scoopermove(SCOOPSPEED, scoop_count);
+     scooperRobot(SCOOPSPEED, scoop_count);
     }
     else if (run_state == 3)
     {
@@ -337,7 +336,7 @@ int main()
     }
   }
 
-  Optical8.setLight(ledState::off);
+  Optical11.setLight(ledState::off);
   Brain.programStop();
   return EXIT_SUCCESS;
 }
