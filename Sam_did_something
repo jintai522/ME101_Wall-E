@@ -140,26 +140,6 @@ const int STATUS_REFRESH_INTERVAL = 10; // loop iterations between screen redraw
 
 motor_group driveMotor(LeftMotor,RightMotor);
 
-const double PI = 3.14159265358979;
-
-// dead-reckoning odometry, relative to the robot's starting point/heading
-double totalHeadingDeg = 0;
-double posX = 0; // mm
-double posY = 0; // mm
-
-void trackMove(double distanceTraveled)
-{
-  posX += distanceTraveled * sin(totalHeadingDeg * PI / 180.0);
-  posY += distanceTraveled * cos(totalHeadingDeg * PI / 180.0);
-}
-
-double normalizeAngle(double angle)
-{
-  while (angle > 180) angle -= 360;
-  while (angle < -180) angle += 360;
-  return angle;
-}
-
 void configureAllSensors()
 {
   Brain.Screen.print("Calibrating...");
@@ -243,12 +223,7 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
-
 void scoopermove (int & run_state)
-  //go back a bit
-  //bring down scooper
-  //go foward
-  //bring up scooper
 {
   LeftMotor.spin(reverse,15,percent);
   RightMotor.spin(reverse,15,percent);
@@ -283,9 +258,6 @@ void scoopermove (int & run_state)
   run_state = 3;
 }
 
-
-
-
 void straightDrive(double distance, int speed,int & run_state)
 {
   BrainInertial.resetRotation();
@@ -298,6 +270,7 @@ void straightDrive(double distance, int speed,int & run_state)
   and !(scoopDetect(10,30,run_state))
   )
   {
+  
     double heading = BrainInertial.rotation(degrees);
     double error = 0 - heading; // target heading is 0 (straight)
 
@@ -307,7 +280,6 @@ void straightDrive(double distance, int speed,int & run_state)
     RightMotor.spin(forward, speed - correction, percent);
   }
   driveMotor.stop(brake);
-  trackMove((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0);
 }
 
 void userInter(int & run_state)
@@ -317,8 +289,8 @@ void userInter(int & run_state)
   if (run_state == 1) Brain.Screen.print("Searching");
   else if (run_state == 2) Brain.Screen.print("Scooping");
   else if (run_state == 3) Brain.Screen.print("Compressing");
-  else if (run_state == 4) Brain.Screen.print("Returning to start");
-  else if (run_state == 0) Brain.Screen.print("Finished");
+  else if (run_state == 4) Brain.Screen.print("Returning");
+  else if (run_state == 0) Brain.Screen.print("Ending Program");
 }
 
 bool seesGreenTape()
@@ -369,29 +341,6 @@ void driveUntilGreen(int speed, int & run_state)
     RightMotor.spin(forward, speed - correction, percent);
   }
   driveMotor.stop(brake);
-  trackMove((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0);
-}
-
-void driveBlind(double distance, int speed)
-  // drives a fixed distance with no scoopDetect check, used to clear the
-  // distance sensor away from a just-compacted spot before re-arming detection
-{
-  BrainInertial.resetRotation();
-  LeftMotor.resetPosition();
-  RightMotor.resetPosition();
-
-  while (((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance))
-  {
-    double heading = BrainInertial.rotation(degrees);
-    double error = 0 - heading;
-
-    double correction = STRAIGHT_KP * error;
-
-    LeftMotor.spin(forward, speed + correction, percent);
-    RightMotor.spin(forward, speed - correction, percent);
-  }
-  driveMotor.stop(brake);
-  trackMove((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0);
 }
 
 void pathFind(int & run_state)
@@ -438,20 +387,6 @@ void compress(double degree, int speed, double current_max, int & run_state)
   run_state = 4; // head back to the starting position
 }
 
-void returnToStart(int & run_state)
-{
-  double dx = -posX;
-  double dy = -posY;
-  double distance = sqrt(dx*dx + dy*dy);
-  double targetHeading = atan2(dx, dy) * 180.0 / PI;
-
-  rotateRobot(normalizeAngle(targetHeading - totalHeadingDeg), PATH_SPEED);
-  driveBlind(distance, PATH_SPEED);
-
-  rotateRobot(normalizeAngle(0 - totalHeadingDeg), PATH_SPEED); // face the original starting heading
-
-  run_state = 0;
-}
 
 int main()
 {
