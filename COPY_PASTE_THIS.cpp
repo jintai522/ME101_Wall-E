@@ -33,7 +33,7 @@ motor MotorCompress9 = motor(PORT9, false);
 motor LeftMotor = motor(PORT7, false);
 motor RightMotor = motor(PORT12, true);
 distance Distance2 = distance(PORT2);
-optical Optical8 = optical(PORT1);
+optical Optical11 = optical(PORT11);
 motor Scooper8 = motor(PORT8, false);
 
 
@@ -134,10 +134,33 @@ const int NUM_ROWS = 5;            // reasonable zigzag density for the field si
 const double SHIFT_DISTANCE = FIELD_WIDTH / (NUM_ROWS - 1); // small step, not another full row
 const int PATH_SPEED = 30;
 const double TURN_ANGLE = 90;      // degrees; flip sign below if left/right come out reversed
-const int GREEN_BRIGHTNESS_MIN = 30; // percent; tune to how bright your tape reads
+const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while watching the live readout
+const double GREEN_HUE_MAX = 160;
+const double GREEN_BRIGHTNESS_MIN = 15; // percent; lower if tape never registers, raise if false triggers
+const double CLEAR_DISTANCE = 150; // mm, blind drive after compressing so the sensor clears the spot
+const int STATUS_REFRESH_INTERVAL = 10; // loop iterations between screen redraws
 
 motor_group driveMotor(LeftMotor,RightMotor);
 
+const double PI = 3.14159265358979;
+
+// dead-reckoning odometry, relative to the robot's starting point/heading
+double totalHeadingDeg = 0;
+double posX = 0; // mm
+double posY = 0; // mm
+
+void trackMove(double distanceTraveled)
+{
+  posX += distanceTraveled * sin(totalHeadingDeg * PI / 180.0);
+  posY += distanceTraveled * cos(totalHeadingDeg * PI / 180.0);
+}
+
+double normalizeAngle(double angle)
+{
+  while (angle > 180) angle -= 360;
+  while (angle < -180) angle += 360;
+  return angle;
+}
 
 void configureAllSensors()
 {
@@ -148,7 +171,7 @@ void configureAllSensors()
   Brain.Screen.clearScreen();
   Brain.Screen.setCursor(1,1);
   BrainInertial.resetRotation();
-  Optical8.setLight(ledState::on);
+  Optical11.setLight(ledState::on);
 }
 /*
 PID Sources
@@ -203,17 +226,20 @@ void rotateRobot(double targetAngle, int speed)
     }
   }
   driveMotor.stop(brake);
+  totalHeadingDeg = normalizeAngle(totalHeadingDeg + targetAngle);
 }
 
 bool scoopDetect(double min, double max, int & run_state)
 {
   if(Distance2.objectDistance(mm) < max and Distance2.objectDistance(mm) > min)
   {
+    Brain.Screen.setCursor(1,1);
+    Brain.Screen.clearLine(1);
     Brain.Screen.print("Object Detected");
     run_state = 2;
     return true;
   }
-  else 
+  else
   {
     return false;
   }
@@ -225,7 +251,7 @@ double scooperTime(double scooperdegree, double scooperspeed)
   return result;
 }
 
-void scoopermove (double scooperSpeed,int & run_state)
+void scoopermove (double scooperSpeed, int & run_state)
   //go back a bit
   //bring down scooper
   //go foward
@@ -247,7 +273,7 @@ void scoopermove (double scooperSpeed,int & run_state)
 
   LeftMotor.spin(forward,100,percent);
   RightMotor.spin(forward,100,percent);
-  wait(1.4,seconds);
+  wait(1,seconds);
    LeftMotor.spin(forward,67,percent);
   RightMotor.spin(forward,67,percent);
   wait(0.5,seconds);
@@ -261,8 +287,7 @@ void scoopermove (double scooperSpeed,int & run_state)
   wait(1, seconds);
   Scooper8.stop();
 
-  run_state = 3; 
-  
+  run_state = 3;
 }
 
 
@@ -289,20 +314,58 @@ void straightDrive(double distance, int speed,int & run_state)
     RightMotor.spin(forward, speed - correction, percent);
   }
   driveMotor.stop(brake);
+  trackMove((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0);
 }
 
 void userInter(int & run_state)
 {
   Brain.Screen.clearScreen();
-  //out put whats its doing during the state
+  Brain.Screen.setCursor(1,1);
+  if (run_state == 1) Brain.Screen.print("Searching");
+  else if (run_state == 2) Brain.Screen.print("Scooping");
+  else if (run_state == 3) Brain.Screen.print("Compressing");
+  else if (run_state == 4) Brain.Screen.print("Returning to start");
+  else if (run_state == 0) Brain.Screen.print("Finished");
+}
+
+bool seesGreenTape()
+{
+  static int sampleCount = 0;
+
+  double hue = Optical11.hue();
+  double brightness = Optical11.brightness();
+  color col = Optical11.color();
+  bool isGreen = (hue >= GREEN_HUE_MIN and hue <= GREEN_HUE_MAX and brightness > GREEN_BRIGHTNESS_MIN);
+
+  // throttle the hue/brightness readout so the screen redraw doesn't slow down sensing
+  if (sampleCount % STATUS_REFRESH_INTERVAL == 0)
+  {
+    Brain.Screen.setCursor(2,1);
+    Brain.Screen.clearLine(2);
+    Brain.Screen.print("hue %.0f bright %.0f", hue, brightness);
+    Brain.Screen.setCursor(3,1);
+    Brain.Screen.clearLine(3);
+    Brain.Screen.print("color: %s", convertColorToString(col));
+  }
+  sampleCount++;
+
+  if (isGreen)
+  {
+    Brain.Screen.setCursor(1,1);
+    Brain.Screen.clearLine(1);
+    Brain.Screen.print("Green Tape Detected");
+  }
+
+  return isGreen;
 }
 
 void driveUntilGreen(int speed, int & run_state)
 {
   BrainInertial.resetRotation();
+  LeftMotor.resetPosition();
+  RightMotor.resetPosition();
 
-  while (!(Optical8.color() == colorType::green and Optical8.brightness() > GREEN_BRIGHTNESS_MIN)
-         and !(scoopDetect(10,30,run_state)))
+  while (!seesGreenTape() and !(scoopDetect(10,30,run_state)))
   {
     double heading = BrainInertial.rotation(degrees);
     double error = 0 - heading; // target heading is 0 (straight)
@@ -313,6 +376,29 @@ void driveUntilGreen(int speed, int & run_state)
     RightMotor.spin(forward, speed - correction, percent);
   }
   driveMotor.stop(brake);
+  trackMove((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0);
+}
+
+void driveBlind(double distance, int speed)
+  // drives a fixed distance with no scoopDetect check, used to clear the
+  // distance sensor away from a just-compacted spot before re-arming detection
+{
+  BrainInertial.resetRotation();
+  LeftMotor.resetPosition();
+  RightMotor.resetPosition();
+
+  while (((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance))
+  {
+    double heading = BrainInertial.rotation(degrees);
+    double error = 0 - heading;
+
+    double correction = STRAIGHT_KP * error;
+
+    LeftMotor.spin(forward, speed + correction, percent);
+    RightMotor.spin(forward, speed - correction, percent);
+  }
+  driveMotor.stop(brake);
+  trackMove((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0);
 }
 
 void pathFind(int & run_state)
@@ -354,7 +440,24 @@ void compress(double degree, int speed, double current_max, int & run_state)
   {}
   MotorCompress9.stop(brake);
 
-  run_state = 1; // resume path finding
+  driveBlind(CLEAR_DISTANCE, PATH_SPEED); // move past the compacted spot so it doesn't immediately re-trigger scoopDetect
+
+  run_state = 4; // head back to the starting position
+}
+
+void returnToStart(int & run_state)
+{
+  double dx = -posX;
+  double dy = -posY;
+  double distance = sqrt(dx*dx + dy*dy);
+  double targetHeading = atan2(dx, dy) * 180.0 / PI;
+
+  rotateRobot(normalizeAngle(targetHeading - totalHeadingDeg), PATH_SPEED);
+  driveBlind(distance, PATH_SPEED);
+
+  rotateRobot(normalizeAngle(0 - totalHeadingDeg), PATH_SPEED); // face the original starting heading
+
+  run_state = 0;
 }
 
 int main()
@@ -366,6 +469,7 @@ int main()
     1 run pattern
     2 run scooping
     3 run compress
+    4 return to start
   */
 
   while (!Brain.buttonCheck.pressing())
@@ -375,6 +479,8 @@ int main()
 
   while (run_state != 0)
   {
+    userInter(run_state);
+
     if (run_state == 1)
     {
       pathFind(run_state);
@@ -387,9 +493,14 @@ int main()
     {
       compress(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, run_state);
     }
+    else if (run_state == 4)
+    {
+      returnToStart(run_state);
+    }
   }
 
-  Optical8.setLight(ledState::off);
+  userInter(run_state);
+  Optical11.setLight(ledState::off);
   Brain.programStop();
   return EXIT_SUCCESS;
 }
