@@ -123,8 +123,6 @@ const double WHEEL_C = 200; //mm
 const double ROTATE_KP = 1.8;
 const double STRAIGHT_KP = 2;
 
-const double SCOOPSPEED = 10;
-
 const double COMPRESS_DEGREE = -4000;
 const int COMPRESS_SPEED = 75;
 const double COMPRESS_CURRENT_MAX = 0.9;
@@ -245,13 +243,8 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
-double scooperTime(double scooperdegree, double scooperspeed)
-{
-  double result = scooperdegree / (scooperspeed / 100 * 120 / 60 * 360);
-  return result;
-}
 
-void scoopermove (double scooperSpeed, int & run_state)
+void scoopermove (int & run_state)
   //go back a bit
   //bring down scooper
   //go foward
@@ -265,7 +258,7 @@ void scoopermove (double scooperSpeed, int & run_state)
 
   wait(0.5,seconds);
 
-  Scooper8.spin(forward,scooperSpeed,percent);
+  Scooper8.spin(forward,10,percent);
   wait(4, seconds);
   Scooper8.stop();
 
@@ -487,7 +480,7 @@ int main()
     }
     else if (run_state == 2)
     {
-      scoopermove(SCOOPSPEED, run_state);
+      scoopermove(run_state);
     }
     else if (run_state == 3)
     {
