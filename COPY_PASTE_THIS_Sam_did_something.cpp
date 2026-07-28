@@ -32,7 +32,7 @@ motor MotorDoor3 = motor(PORT3, false);
 motor MotorCompress9 = motor(PORT9, false);
 motor LeftMotor = motor(PORT7, false);
 motor RightMotor = motor(PORT12, true);
-motor Scooper8 = motor(PORT8, false);
+motor MotorScoop8 = motor(PORT8, false);
 optical Optical11 = optical(PORT11);
 distance Distance2 = distance(PORT2);
 
@@ -130,7 +130,7 @@ const double COMPRESS_CURRENT_MAX = 0.9;
 const double GREEN_HUE_MIN = 75;
 const double GREEN_HUE_MAX = 160;
 const double BLUE_HUE_MIN = 200;
-const double BLUE_HUE_MAX = 270;
+const double BLUE_HUE_MAX = 333;
 
 const double ZIGZAG_STEP = 200; //mm, about robot length
 
@@ -244,7 +244,7 @@ void straightDrive(double distance, int speed,int & run_state)
   while 
   (
   ((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance)
-  and !(scoopDetect(10,30,run_state))
+  and !(scoopDetect(10,36,run_state))
   )
   {
   
@@ -286,8 +286,7 @@ void driveUntilGreen(int speed, int & run_state)
   BrainInertial.resetRotation();
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
-
-  while ((!seesColor(GREEN_HUE_MIN, GREEN_HUE_MAX, 6) and !(scoopDetect(10,30,run_state))))
+  while ((!seesColor(GREEN_HUE_MIN, GREEN_HUE_MAX, 6)) and !(scoopDetect(10,36,run_state)))
   {
     double heading = BrainInertial.rotation(degrees);
     double error = 0 - heading; // target heading is 0 (straight)
@@ -296,6 +295,7 @@ void driveUntilGreen(int speed, int & run_state)
 
     LeftMotor.spin(forward, speed + correction, percent);
     RightMotor.spin(forward, speed - correction, percent);
+
     if (seesColor(BLUE_HUE_MIN, BLUE_HUE_MAX, 7))
     {
       run_state = 4;
@@ -334,68 +334,22 @@ void pathFind(int speed, int & run_state, bool & facingRight)//assume no object 
   }
 }
 
-void scoopRobot ( double scooperSpeed, int & run_state, int & scoop_count)
-{
-  straightDrive(500,-30,run_state);
 
-  MotorScoop8.spin(forward,scooperSpeed,percent);
-  wait(4, seconds);
-  MotorScoop8.stop();
-
-  wait(0.5,seconds);
-
-  straightDrive(500, 100, run_state);
-
-  MotorScoop8.spin(reverse,47,percent);
-  wait(1, seconds);
-  MotorScoop8.stop();
-
-  run_state = 3; 
-}
-
-void compress(double degree, int speed, int & run_state)
+void compress(double degree, int speed, double current_max, int & run_state)
 {
   MotorCompress9.resetPosition();
   MotorCompress9.spin(reverse, speed, percent);
-  while (MotorCompress9.current(amp) < compressCurrentMax)
-  {
-    Brain.Screen.clearScreen();
-    Brain.Screen.setCursor(1,1);
-    Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
-    Brain.timer(seconds),
-    MotorCompress9.current(amp));
-    wait(100, msec);
-  }
-  degree = fabs(MotorCompress9.position(degrees));
+  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
+  {}
   MotorCompress9.stop(brake);
 
   wait(1, seconds);
 
   MotorCompress9.resetPosition();
   MotorCompress9.spin(forward, speed, percent);
-  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree))
+  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
   {}
   MotorCompress9.stop(brake);
-
-  
-  run_state = 0;
-}
-
-void movedoor (int speed, directionType motorDir)
-{
-  double degree = 0; 
-  MotorDoor3.spin(motorDir, speed, percent);
-  while (MotorDoor3.current(amp) < 0.2)
-  {
-    Brain.Screen.clearScreen();
-    Brain.Screen.setCursor(1,1);
-    Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
-    Brain.timer(seconds),
-    MotorDoor3.current(amp));
-    wait(100, msec);
-  }
-  degree = fabs(MotorDoor3.position(degrees));
-  MotorDoor3.stop(brake);
 }
 
 void returning(int speed, int & run_state, bool & facingRight)
@@ -410,8 +364,12 @@ void returning(int speed, int & run_state, bool & facingRight)
     turnSign = -1;
   }
   rotateRobot(90 * turnSign, 10);
+  driveUntilGreen(speed, run_state);
+  straightDrive(ZIGZAG_STEP, speed, run_state);
   rotateRobot(-90, 10);
   driveUntilGreen(speed, run_state);
+  
+  driveMotor.stop(brake);
 }
 
 //VEX-E MAIN 
@@ -440,11 +398,11 @@ int main()
     userInter(run_state);//Will say what it does
     if (run_state == 1)
     {
-      pathFind(30, run_state, facingRight);
+      pathFind(60, run_state, facingRight);
     }
     else if (run_state == 2)
     {
-      scoopermove(run_state);
+      break;
     }
     else if (run_state == 3)
     {
@@ -452,7 +410,7 @@ int main()
     }
     else if (run_state == 4)
     {
-      returning(30, run_state, facingRight);
+      returning(36, run_state, facingRight);
     }
   }
   userInter(run_state);
