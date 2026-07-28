@@ -129,7 +129,10 @@ const double COMPRESS_CURRENT_MAX = 0.9;
 
 const double GREEN_HUE_MIN = 75;
 const double GREEN_HUE_MAX = 160;
+const double BLUE_HUE_MIN = 200;
+const double BLUE_HUE_MAX = 270;
 
+const double ZIGZAG_STEP = 200; //mm, about robot length
 
 motor_group driveMotor(LeftMotor,RightMotor);
 
@@ -144,13 +147,30 @@ void configureAllSensors()
   BrainInertial.resetRotation();
   Optical11.setLight(ledState::on);
 }
-/*
-PID Sources
+
+void userInter(int & run_state)
+{
+  Brain.Screen.clearScreen();
+  Brain.Screen.setCursor(1,1);
+  if (run_state == 5)
+  {
+    Brain.Screen.print("Hi, I'm VEX-E");
+    Brain.Screen.setCursor(3,1);
+    Brain.Screen.print("Press The Check");
+    Brain.Screen.setCursor(4,1);
+    Brain.Screen.print("Mark to Start!");
+  }
+  else if (run_state == 1) Brain.Screen.print("Searching");
+  else if (run_state == 2) Brain.Screen.print("Scooping");
+  else if (run_state == 3) Brain.Screen.print("Compressing");
+  else if (run_state == 4) Brain.Screen.print("Returning");
+  else if (run_state == 0) Brain.Screen.print("Ending Program");
+}
+
+/*PID Sources
 https://www.youtube.com/watch?v=KMSJviT2jI8
 https://lucykim0907-byte.github.io/Pid-build-log-by-Jaehyeon-Shin/pid_portfolio.html
-P is the proportional, which is error
-  (how far off)
-*/
+P is the proportional, which is error how far off)*/
 void rotateRobot(double targetAngle, int speed)
 {
   double error = 676; // change if needed
@@ -215,6 +235,102 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
+void straightDrive(double distance, int speed,int & run_state)
+{
+  BrainInertial.resetRotation();
+  LeftMotor.resetPosition();
+  RightMotor.resetPosition();
+
+  while 
+  (
+  ((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance)
+  and !(scoopDetect(10,30,run_state))
+  )
+  {
+  
+    double heading = BrainInertial.rotation(degrees);
+    double error = 0 - heading; // target heading is 0 (straight)
+
+    double correction = STRAIGHT_KP * error;
+
+    LeftMotor.spin(forward, speed + correction, percent);
+    RightMotor.spin(forward, speed - correction, percent);
+  }
+  driveMotor.stop(brake);
+}
+
+bool seesColor(double hueMin, double hueMax, int colour)
+{
+  double hue = Optical11.hue();
+  color col = Optical11.color();
+  bool detected = (hue >= hueMin and hue <= hueMax);
+
+  if (detected)
+  {
+    Brain.Screen.setCursor(1,1);
+    Brain.Screen.clearLine(1);
+    if (colour == 6)
+    {
+      Brain.Screen.print("Green Detected");
+    }
+    else if (colour == 7)
+    {
+      Brain.Screen.print("Blue Detected");
+    }
+  }
+  return detected;
+}
+
+void driveUntilGreen(int speed, int & run_state)
+{
+  BrainInertial.resetRotation();
+  LeftMotor.resetPosition();
+  RightMotor.resetPosition();
+
+  while (!seesColor(GREEN_HUE_MIN, GREEN_HUE_MAX, 6) and !(scoopDetect(10,30,run_state)))
+  {
+    double heading = BrainInertial.rotation(degrees);
+    double error = 0 - heading; // target heading is 0 (straight)
+
+    double correction = STRAIGHT_KP * error;
+
+    LeftMotor.spin(forward, speed + correction, percent);
+    RightMotor.spin(forward, speed - correction, percent);
+  }
+  driveMotor.stop(brake);
+}
+
+void pathFind(int speed, int & run_state, bool & facingRight)//assume no object while turning
+{
+  bool turnRight = false; //Start with left turn
+
+  while (run_state == 1)
+  {
+    driveUntilGreen(speed, run_state);
+
+    if (run_state == 1)
+    { 
+      userInter(run_state);
+
+      int turnSign = 0;
+      if (turnRight)
+      {
+        turnSign = 1;
+      }
+      else
+      {
+        turnSign = -1;
+      }
+
+      rotateRobot(90* turnSign, 10);
+      straightDrive(ZIGZAG_STEP, speed, run_state);
+      rotateRobot(90 * turnSign, 10);
+
+      turnRight = !turnRight;
+    }
+  }
+}
+
 void scoopermove (int & run_state)
 {
   LeftMotor.spin(reverse,15,percent);
@@ -244,83 +360,11 @@ void scoopermove (int & run_state)
   RightMotor.stop();
 
   Scooper8.spin(reverse,47,percent);
-  wait(1, seconds);
-  Scooper8.stop();
-
-  run_state = 3;
-}
-
-void straightDrive(double distance, int speed,int & run_state)
-{
-  BrainInertial.resetRotation();
-  LeftMotor.resetPosition();
-  RightMotor.resetPosition();
-
-  while 
-  (
-  ((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance)
-  and !(scoopDetect(10,30,run_state))
-  )
-  {
   
-    double heading = BrainInertial.rotation(degrees);
-    double error = 0 - heading; // target heading is 0 (straight)
+  wait(1, seconds);
 
-    double correction = STRAIGHT_KP * error;
-
-    LeftMotor.spin(forward, speed + correction, percent);
-    RightMotor.spin(forward, speed - correction, percent);
-  }
-  driveMotor.stop(brake);
-}
-
-void userInter(int & run_state)
-{
-  Brain.Screen.clearScreen();
-  Brain.Screen.setCursor(1,1);
-  if (run_state == 1) Brain.Screen.print("Searching");
-  else if (run_state == 2) Brain.Screen.print("Scooping");
-  else if (run_state == 3) Brain.Screen.print("Compressing");
-  else if (run_state == 4) Brain.Screen.print("Returning");
-  else if (run_state == 0) Brain.Screen.print("Ending Program");
-}
-
-bool seesGreenTape()
-{
-  double hue = Optical11.hue();
-  color col = Optical11.color();
-  bool isGreen = (hue >= GREEN_HUE_MIN and hue <= GREEN_HUE_MAX);
-
-  if (isGreen)
-  {
-    Brain.Screen.setCursor(1,1);
-    Brain.Screen.clearLine(1);
-    Brain.Screen.print("Green Detected");
-  }
-  return isGreen;
-}
-
-void driveUntilGreen(int speed, int & run_state)
-{
-  BrainInertial.resetRotation();
-  LeftMotor.resetPosition();
-  RightMotor.resetPosition();
-
-  while (!seesGreenTape() and !(scoopDetect(10,30,run_state)))
-  {
-    double heading = BrainInertial.rotation(degrees);
-    double error = 0 - heading; // target heading is 0 (straight)
-
-    double correction = STRAIGHT_KP * error;
-
-    LeftMotor.spin(forward, speed + correction, percent);
-    RightMotor.spin(forward, speed - correction, percent);
-  }
-  driveMotor.stop(brake);
-}
-
-void pathFind(int speed, int & run_state)
-{
+  Scooper8.stop();
+  run_state = 3;
 }
 
 void compress(double degree, int speed, double current_max, int & run_state)
@@ -342,30 +386,49 @@ void compress(double degree, int speed, double current_max, int & run_state)
   run_state = 4;
 }
 
+void returning(int speed, int & run_state, bool & facingRight)
+{
+  int turnSign = 0;
+  if (facingRight)
+  {
+    turnSign = 1;
+  }
+  else
+  {
+    turnSign = -1;
+  }
+  rotateRobot(90 * turnSign, 10);
+  rotateRobot(-90, 10);
+  driveUntilGreen(speed, run_state);
+}
+
+//VEX-E MAIN 
 int main()
 {
   configureAllSensors();
-  int run_state = 1;
+  int run_state = 5;
+  bool facingRight = true; //assume
   /*
     0 close program
     1 run pattern
     2 run scooping
     3 run compress
     4 return to start
+    5 welcome
   */
-
+  userInter(run_state);
   while (!Brain.buttonCheck.pressing())
   {}
   while (Brain.buttonCheck.pressing())
   {}
+  run_state = 1;
 
   while (run_state != 0)
   {
-    userInter(run_state);
-
+    userInter(run_state);//Will say what it does
     if (run_state == 1)
     {
-      pathFind(30, run_state);
+      pathFind(30, run_state, facingRight);
     }
     else if (run_state == 2)
     {
@@ -377,7 +440,9 @@ int main()
     }
     else if (run_state == 4)
     {
-      break;
+      while (!seesColor(BLUE_HUE_MIN, BLUE_HUE_MAX, 7))
+      {}
+      returning(30, run_state, facingRight);
     }
   }
   userInter(run_state);
