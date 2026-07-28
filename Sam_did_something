@@ -287,7 +287,7 @@ void driveUntilGreen(int speed, int & run_state)
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
 
-  while (!seesColor(GREEN_HUE_MIN, GREEN_HUE_MAX, 6) and !(scoopDetect(10,30,run_state)))
+  while ((!seesColor(GREEN_HUE_MIN, GREEN_HUE_MAX, 6) and !(scoopDetect(10,30,run_state))))
   {
     double heading = BrainInertial.rotation(degrees);
     double error = 0 - heading; // target heading is 0 (straight)
@@ -296,6 +296,10 @@ void driveUntilGreen(int speed, int & run_state)
 
     LeftMotor.spin(forward, speed + correction, percent);
     RightMotor.spin(forward, speed - correction, percent);
+    if (seesColor(BLUE_HUE_MIN, BLUE_HUE_MAX, 7))
+    {
+      run_state = 4;
+    }
   }
   driveMotor.stop(brake);
 }
@@ -307,7 +311,6 @@ void pathFind(int speed, int & run_state, bool & facingRight)//assume no object 
   while (run_state == 1)
   {
     driveUntilGreen(speed, run_state);
-
     if (run_state == 1)
     { 
       userInter(run_state);
@@ -382,8 +385,6 @@ void compress(double degree, int speed, double current_max, int & run_state)
   while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
   {}
   MotorCompress9.stop(brake);
-
-  run_state = 4;
 }
 
 void returning(int speed, int & run_state, bool & facingRight)
@@ -440,8 +441,6 @@ int main()
     }
     else if (run_state == 4)
     {
-      while (!seesColor(BLUE_HUE_MIN, BLUE_HUE_MAX, 7))
-      {}
       returning(30, run_state, facingRight);
     }
   }
