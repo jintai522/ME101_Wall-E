@@ -398,7 +398,7 @@ int main()
     userInter(run_state);//Will say what it does
     if (run_state == 1)
     {
-      pathFind(60, run_state, facingRight);
+      pathFind(30, run_state, facingRight);
     }
     else if (run_state == 2)
     {
