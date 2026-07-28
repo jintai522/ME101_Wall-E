@@ -334,57 +334,68 @@ void pathFind(int speed, int & run_state, bool & facingRight)//assume no object 
   }
 }
 
-void scoopermove (int & run_state)
+void scoopRobot ( double scooperSpeed, int & run_state, int & scoop_count)
 {
-  LeftMotor.spin(reverse,15,percent);
-  RightMotor.spin(reverse,15,percent);
-  wait(2.8,seconds);
-  LeftMotor.stop();
-  RightMotor.stop();
+  straightDrive(500,-30,run_state);
 
-  wait(0.5,seconds);
-
-  Scooper8.spin(forward,10,percent);
+  MotorScoop8.spin(forward,scooperSpeed,percent);
   wait(4, seconds);
-  Scooper8.stop();
+  MotorScoop8.stop();
 
   wait(0.5,seconds);
 
-  LeftMotor.spin(forward,100,percent);
-  RightMotor.spin(forward,100,percent);
-  wait(1,seconds);
-   LeftMotor.spin(forward,67,percent);
-  RightMotor.spin(forward,67,percent);
-  wait(0.5,seconds);
-  LeftMotor.spin(forward,23,percent);
-  RightMotor.spin(forward,23,percent);
-  wait(0.5,seconds);
-  LeftMotor.stop();
-  RightMotor.stop();
+  straightDrive(500, 100, run_state);
 
-  Scooper8.spin(reverse,47,percent);
-  
+  MotorScoop8.spin(reverse,47,percent);
   wait(1, seconds);
+  MotorScoop8.stop();
 
-  Scooper8.stop();
-  run_state = 3;
+  run_state = 3; 
 }
 
-void compress(double degree, int speed, double current_max, int & run_state)
+void compress(double degree, int speed, int & run_state)
 {
   MotorCompress9.resetPosition();
   MotorCompress9.spin(reverse, speed, percent);
-  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
-  {}
+  while (MotorCompress9.current(amp) < compressCurrentMax)
+  {
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1,1);
+    Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
+    Brain.timer(seconds),
+    MotorCompress9.current(amp));
+    wait(100, msec);
+  }
+  degree = fabs(MotorCompress9.position(degrees));
   MotorCompress9.stop(brake);
 
   wait(1, seconds);
 
   MotorCompress9.resetPosition();
   MotorCompress9.spin(forward, speed, percent);
-  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
+  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree))
   {}
   MotorCompress9.stop(brake);
+
+  
+  run_state = 0;
+}
+
+void movedoor (int speed, directionType motorDir)
+{
+  double degree = 0; 
+  MotorDoor3.spin(motorDir, speed, percent);
+  while (MotorDoor3.current(amp) < 0.2)
+  {
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1,1);
+    Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
+    Brain.timer(seconds),
+    MotorDoor3.current(amp));
+    wait(100, msec);
+  }
+  degree = fabs(MotorDoor3.position(degrees));
+  MotorDoor3.stop(brake);
 }
 
 void returning(int speed, int & run_state, bool & facingRight)
