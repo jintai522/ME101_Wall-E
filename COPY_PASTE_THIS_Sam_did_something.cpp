@@ -434,7 +434,7 @@ void returning(int speed, int & run_state, bool & facingRight)
   {
     turnSign = -1;
   }
-  straightDrive(-110, 30 ,run_state); // first backs up a bit 
+  straightDrive(-140, 30 ,run_state); // first backs up a bit 
 
   rotateRobot(90 * turnSign, 18);
 
