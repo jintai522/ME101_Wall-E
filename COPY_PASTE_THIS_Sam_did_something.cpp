@@ -440,13 +440,18 @@ void returning(int speed, int & run_state, bool & facingRight)
 
   driveUntilGreen(speed, run_state); // touches the first green line 
 
-  straightDrive(220, speed, run_state); // get pass the green line 
+  straightDrive(200, speed, run_state); // get pass the green line 
 
   rotateRobot(90, 18); 
 
   driveUntilGreen(speed, run_state); // drive until touches dumping area 
 
   run_state = 3;   // call the compression now 
+}
+
+void returnStart()
+{
+  
 }
 
 //VEX-E MAIN 
