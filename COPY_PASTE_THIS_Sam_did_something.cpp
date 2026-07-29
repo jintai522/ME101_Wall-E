@@ -393,31 +393,6 @@ void pathFind(int speed, int & run_state, bool & facingRight)
   }
 }
 
-void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
-{
-  MotorCompress9.resetPosition();
-  MotorCompress9.spin(forward, speed, percent);
-  while (MotorCompress9.current(amp) < maxAmp) // determines how much the motor can push 
-  //this ampere was determined based on trial test and also helps verify design specific..
-  {
-    Brain.Screen.setCursor(2,1);
-    Brain.Screen.print("%6.2f  A:%.2f  R:%.2f  Piston:%.2f\n",
-    Brain.timer(seconds), MotorCompress9.current(amp));
-    wait(100, msec);
-  }
-  wall_dist_temp = fabs(MotorCompress9.position(degrees));
-  MotorCompress9.stop(brake);
-
-  wait(0.5, seconds);
-
-  MotorCompress9.spin(reverse, speed, percent);
-  while (fabs(MotorCompress9.position(degrees)- wall_dist_temp) <= 360) // backs up a little bit 
-  {}
-  MotorCompress9.stop(brake);
-}
-
-
-
 void returning(int speed, int & run_state, bool & facingRight, double & search_width, double & search_length)
 {
   double startwidth = 0;
@@ -460,6 +435,35 @@ void returning(int speed, int & run_state, bool & facingRight, double & search_w
   run_state = 3;   // call the compression now 
 }
 
+void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
+{
+  MotorCompress9.resetPosition();
+  MotorCompress9.spin(forward, speed, percent);
+  while (MotorCompress9.current(amp) < maxAmp) // determines how much the motor can push 
+  //this ampere was determined based on trial test and also helps verify design specific..
+  {
+    Brain.Screen.setCursor(2,1);
+    Brain.Screen.print("%6.2f  A:%.2f  R:%.2f  Piston:%.2f\n",
+    Brain.timer(seconds), MotorCompress9.current(amp));
+    wait(100, msec);
+  }
+  wall_dist_temp = fabs(MotorCompress9.position(degrees));
+  MotorCompress9.stop(brake);
+
+  wait(0.5, seconds);
+
+  MotorCompress9.spin(reverse, speed, percent);
+  while (fabs(MotorCompress9.position(degrees)- wall_dist_temp) <= 360) // backs up a little bit 
+  {}
+  MotorCompress9.stop(brake);
+}
+
+void dump ()
+{
+ // the actual code
+}
+
+
 void returnStart()
 {
   
@@ -471,10 +475,6 @@ void returnsearch(double & search_width, double & search_length, bool & facingRi
 
 }
 
-void dump ()
-{
- // the actual code
-}
 
 void end_or_searchm (double & search_width, double & search_length, bool & facingRight,int & scoop_count)
 {
