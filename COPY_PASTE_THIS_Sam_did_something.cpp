@@ -122,9 +122,6 @@ const double WHEEL_C = 200; //mm
 const double ROTATE_KP = 1.8;
 const double STRAIGHT_KP = 2;
 
-const double COMPRESS_DEGREE = -4000;
-const int COMPRESS_SPEED = 75;
-
 const double GREEN_HUE_MIN = 75;
 const double GREEN_HUE_MAX = 170;
 const double BLUE_HUE_MIN = 190;
@@ -396,36 +393,33 @@ void pathFind(int speed, int & run_state, bool & facingRight)
   }
 }
 
-void compressRobot(double degree, int speed, int & run_state)
+void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
 {
   MotorCompress9.resetPosition();
   MotorCompress9.spin(forward, speed, percent);
-  while (MotorCompress9.current(amp) < 0.4) // determines how much the motor can push 
+  while (MotorCompress9.current(amp) < maxAmp) // determines how much the motor can push 
   //this ampere was determined based on trial test and also helps verify design specific..
   {
     Brain.Screen.setCursor(2,1);
-    Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
+    Brain.Screen.print("%6.2f  A:%.2f  R:%.2f  Piston:%.2f\n",
     Brain.timer(seconds), MotorCompress9.current(amp));
     wait(100, msec);
   }
-  degree = fabs(MotorCompress9.position(degrees));
+  wall_dist_temp = fabs(MotorCompress9.position(degrees));
   MotorCompress9.stop(brake);
 
   wait(0.5, seconds);
 
   MotorCompress9.resetPosition();
   MotorCompress9.spin(reverse, speed, percent);
-  while (fabs(MotorCompress9.position(degrees)) <= 20) // backs up a little bit 
-  //while (MotorCompress9.current(amp) < 0.2)
+  while (fabs(MotorCompress9.position(degrees)) <= 360) // backs up a little bit 
   {}
   MotorCompress9.stop(brake);
-  
-  run_state = 0;
 }
 
 
 
-void returning(int speed, int & run_state, bool & facingRight, double & search_width = 0, double & search_length = 0)
+void returning(int speed, int & run_state, bool & facingRight, double & search_width, double & search_length)
 {
   double startwidth = 0;
   double endwidth = 0; 
@@ -474,19 +468,20 @@ void returnStart()
 
 void returnsearch(double & search_width, double & search_length, bool & facingRight)
 {
-  straightDrive(-search_length, 25 )
-
+  straightDrive(-search_length, 25);
 
 }
 
-void dump (int & zigzag_count, int & scoop_count)
+void dump ()
 {
  // the actual code
+}
 
-
+void end_or_searchm (double & search_width, double & search_length, bool & facingRight,int & scoop_count)
+{
  if (scoop_count > 6)
   {
-  returnsearch();
+    returnsearch(search_width,search_length,facingRight);
   } 
   else 
   {
@@ -496,14 +491,17 @@ void dump (int & zigzag_count, int & scoop_count)
 }
 
 //VEX-E MAIN 
+
 int main()
 {
   configureAllSensors();
   int run_state = 5;
   bool facingRight = true; //assume
   int scoop_count = 5;
+  double wall_dist_temp = 0; 
   double search_width = 0; 
   double search_length = 0; 
+ 
   /*
     0 close program
     1 run pattern
@@ -532,11 +530,12 @@ int main()
     }
     else if (run_state == 3)
     {
-      compressRobot(COMPRESS_DEGREE, COMPRESS_SPEED, run_state);
+      compressRobot(90, 0.4,wall_dist_temp);
+      //dump ();
     }
     else if (run_state == 4)
     {
-      returning(36, run_state, facingRight);
+      returning(36, run_state, facingRight, search_width, search_length);
     }
   }
   userInter(run_state);
