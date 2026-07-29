@@ -481,7 +481,7 @@ int main()
     }
     else if (run_state == 2)
     {
-      break;//addcompress here
+      scoopRobot(run_state, scoop_count);
     }
     else if (run_state == 3)
     {
