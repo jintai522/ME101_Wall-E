@@ -29,10 +29,10 @@ brain Brain;
 // Robot configuration code.
 inertial BrainInertial = inertial();
 motor MotorDoor3 = motor(PORT3, false);
-motor MotorCompress9 = motor(PORT9, false);
+motor MotorCompress9 = motor(PORT9, true);
 motor LeftMotor = motor(PORT7, false);
 motor RightMotor = motor(PORT12, true);
-motor MotorScoop8 = motor(PORT8, false);
+motor Scooper8 = motor(PORT8, false);
 optical Optical11 = optical(PORT11);
 distance Distance2 = distance(PORT2);
 
@@ -456,6 +456,7 @@ int main()
   configureAllSensors();
   int run_state = 5;
   bool facingRight = true; //assume
+  int scoop_count = 5;
   /*
     0 close program
     1 run pattern
