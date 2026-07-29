@@ -250,7 +250,7 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
-void straightDrive(double distance, int speed, int & run_state)
+void straightDrive(double distance, int speed)
 {
   directionType dir;//the direction for rotation
   if (distance >= 0) 
@@ -297,7 +297,7 @@ void straightDrive(double distance, int speed, int & run_state)
 void scoopRobot ( int & run_state, int & scoop_count)
 {
   scoop_count++; 
-  straightDrive(-350,30,run_state);
+  straightDrive(-350,30);
 
   Scooper8.spin(forward,30,percent);
   wait(2.5, seconds);
@@ -305,9 +305,9 @@ void scoopRobot ( int & run_state, int & scoop_count)
 
   wait(0.5,seconds);
 
-  straightDrive(400, 100,run_state);
-  straightDrive(100, 67, run_state);
-  straightDrive(100, 35, run_state);
+  straightDrive(400, 100);
+  straightDrive(100, 67);
+  straightDrive(100, 35);
 
   Scooper8.spin(reverse,47,percent);
   wait(1, seconds);
@@ -388,7 +388,7 @@ void pathFind(int speed, int & run_state, bool & facingRight)
         turnSign = 1;
       }
       rotateRobot(90 * turnSign, 18);
-      straightDrive(ZIGZAG_STEP, speed, run_state);
+      straightDrive(ZIGZAG_STEP, speed);
       rotateRobot(90 * turnSign, 18);
 
       facingRight = !facingRight;
@@ -423,8 +423,15 @@ void compressRobot(double degree, int speed, int & run_state)
   run_state = 0;
 }
 
-void returning(int speed, int & run_state, bool & facingRight)
+
+
+void returning(int speed, int & run_state, bool & facingRight, double & search_width = 0, double & search_length = 0)
 {
+  double startwidth = 0;
+  double endwidth = 0; 
+  double startlength = 0; 
+  double endlength = 0; 
+
   int turnSign = 0;
   if (facingRight)
   {
@@ -434,17 +441,28 @@ void returning(int speed, int & run_state, bool & facingRight)
   {
     turnSign = -1;
   }
-  straightDrive(-140, 30 ,run_state); // first backs up a bit 
+  straightDrive(-140, 30); // first backs up a bit 
 
   rotateRobot(90 * turnSign, 18);
 
+  startwidth = (fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C)) / 2.0; 
+
   driveUntilGreen(speed, run_state); // touches the first green line 
 
-  straightDrive(200, speed, run_state); // get pass the green line 
+  endwidth = (fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C)) / 2.0; 
+
+  straightDrive(200, speed); // get pass the green line 
 
   rotateRobot(90, 18); 
 
+  startlength = (fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C)) / 2.0;
+
   driveUntilGreen(speed, run_state); // drive until touches dumping area 
+  
+  endlength = (fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C)) / 2.0;
+
+  search_width = endwidth - startwidth; // measures "y" pos/ length between the car to the bottom green tape when it got full midtrack 
+  search_length = endlength - startlength; //measures "x" pos / length between car and the dumping place 
 
   run_state = 3;   // call the compression now 
 }
@@ -454,6 +472,29 @@ void returnStart()
   
 }
 
+void returnsearch(double & search_width, double & search_length, bool & facingRight)
+{
+  straightDrive(-search_length, 25 )
+
+
+}
+
+void dump (int & zigzag_count, int & scoop_count)
+{
+ // the actual code
+
+
+ if (scoop_count > 6)
+  {
+  returnsearch();
+  } 
+  else 
+  {
+    returnStart();
+  }
+  scoop_count = 0; 
+}
+
 //VEX-E MAIN 
 int main()
 {
@@ -461,6 +502,8 @@ int main()
   int run_state = 5;
   bool facingRight = true; //assume
   int scoop_count = 5;
+  double search_width = 0; 
+  double search_length = 0; 
   /*
     0 close program
     1 run pattern
