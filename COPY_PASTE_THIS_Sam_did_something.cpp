@@ -29,10 +29,10 @@ brain Brain;
 // Robot configuration code.
 inertial BrainInertial = inertial();
 motor MotorDoor3 = motor(PORT3, false);
-motor MotorCompress9 = motor(PORT9, false);
+motor MotorCompress9 = motor(PORT9, true);
 motor LeftMotor = motor(PORT7, false);
 motor RightMotor = motor(PORT12, true);
-motor MotorScoop8 = motor(PORT8, false);
+motor Scooper8 = motor(PORT8, false);
 optical Optical11 = optical(PORT11);
 distance Distance2 = distance(PORT2);
 
@@ -132,7 +132,7 @@ const double GREEN_HUE_MAX = 160;
 const double BLUE_HUE_MIN = 200;
 const double BLUE_HUE_MAX = 333;
 
-const double ZIGZAG_STEP = 140; //mm
+const double ZIGZAG_STEP = 100; //mm
 
 motor_group driveMotor(LeftMotor,RightMotor);
 
@@ -147,6 +147,24 @@ void configureAllSensors()
   BrainInertial.resetRotation();
   Optical11.setLight(ledState::on);
 }
+
+void movedoor (int speed, directionType motorDir)
+{
+  double degree = 0; 
+  MotorDoor3.spin(motorDir, speed, percent);
+  while (MotorDoor3.current(amp) < 0.2)
+  {
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1,1);
+    Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
+    Brain.timer(seconds),
+    MotorDoor3.current(amp));
+    wait(100, msec);
+  }
+  degree = fabs(MotorDoor3.position(degrees));
+  MotorDoor3.stop(brake);
+}
+
 
 void userInter(int & run_state)
 {
@@ -345,7 +363,7 @@ void pathFind(int speed, int & run_state, bool & facingRight)//assume no object 
         turnSign = -1;
       }
 
-      rotateRobot(90* turnSign, 10);
+      rotateRobot(90 * turnSign, 10);
       straightDrive(ZIGZAG_STEP, speed, run_state);
       rotateRobot(90 * turnSign, 10);
 
@@ -356,21 +374,33 @@ void pathFind(int speed, int & run_state, bool & facingRight)//assume no object 
 }
 
 
-void compress(double degree, int speed, double current_max, int & run_state)
+void compress(double degree, int speed, int & run_state)
 {
   MotorCompress9.resetPosition();
   MotorCompress9.spin(reverse, speed, percent);
-  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
-  {}
+  while (MotorCompress9.current(amp) < 0.4) // determines how much the motor can push 
+  {
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1,1);
+    Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
+    Brain.timer(seconds),
+    MotorCompress9.current(amp));
+    wait(100, msec);
+  }
+  degree = fabs(MotorCompress9.position(degrees));
   MotorCompress9.stop(brake);
 
-  wait(1, seconds);
+  wait(0.5, seconds);
 
   MotorCompress9.resetPosition();
   MotorCompress9.spin(forward, speed, percent);
-  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
+  while (fabs(MotorCompress9.position(degrees)) <= 20) // backs up a little bit 
+  //while (MotorCompress9.current(amp) < 0.2)
   {}
   MotorCompress9.stop(brake);
+
+  
+  run_state = 0;
 }
 
 void returning(int speed, int & run_state, bool & facingRight)
@@ -384,14 +414,20 @@ void returning(int speed, int & run_state, bool & facingRight)
   {
     turnSign = -1;
   }
-  rotateRobot(90 * turnSign, 10);
-  driveUntilGreen(speed, run_state);
-  straightDrive(ZIGZAG_STEP, speed, run_state);
-  rotateRobot(-90, 10);
-  driveUntilGreen(speed, run_state);
-  driveMotor.stop(brake);
+  straightDrive(-75, 30 ,run_state); // first backs up a bit 
 
-  run_state = 0;
+  rotateRobot(90 * turnSign, 10);
+
+  driveUntilGreen(speed, run_state); // touches the first green line 
+
+  straightDrive(75, speed, run_state); // get pass the green line 
+
+  rotateRobot(-90, 10); 
+
+  driveUntilGreen(speed, run_state); // drive until touches dumping area 
+
+  run_state = 3;   // call the compression now 
+
 }
 
 //VEX-E MAIN 
@@ -434,6 +470,10 @@ int main()
     {
       returning(36, run_state, facingRight);
     }
+     else if (run_state == 5)
+    {
+      break; // add push out trash function 
+    } 
   }
   userInter(run_state);
   wait(5,seconds);
