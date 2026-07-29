@@ -130,7 +130,7 @@ const double GREEN_HUE_MAX = 170;
 const double BLUE_HUE_MIN = 190;
 const double BLUE_HUE_MAX = 359;
 
-const double ZIGZAG_STEP = 100; //mm
+const double ZIGZAG_STEP = 180; //mm
 
 motor_group driveMotor(LeftMotor,RightMotor);
 
