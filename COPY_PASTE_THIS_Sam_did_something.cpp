@@ -125,12 +125,11 @@ const double STRAIGHT_KP = 2;
 
 const double COMPRESS_DEGREE = -4000;
 const int COMPRESS_SPEED = 75;
-const double COMPRESS_CURRENT_MAX = 0.9;
 
 const double GREEN_HUE_MIN = 75;
-const double GREEN_HUE_MAX = 160;
-const double BLUE_HUE_MIN = 200;
-const double BLUE_HUE_MAX = 333;
+const double GREEN_HUE_MAX = 170;
+const double BLUE_HUE_MIN = 190;
+const double BLUE_HUE_MAX = 359;
 
 const double ZIGZAG_STEP = 100; //mm
 
@@ -155,10 +154,9 @@ void movedoor (int speed, directionType motorDir)
   while (MotorDoor3.current(amp) < 0.2)
   {
     Brain.Screen.clearScreen();
-    Brain.Screen.setCursor(1,1);
+    Brain.Screen.setCursor(2,1);
     Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
-    Brain.timer(seconds),
-    MotorDoor3.current(amp));
+    Brain.timer(seconds),MotorDoor3.current(amp));
     wait(100, msec);
   }
   degree = fabs(MotorDoor3.position(degrees));
@@ -373,18 +371,17 @@ void pathFind(int speed, int & run_state, bool & facingRight)//assume no object 
   }
 }
 
-
-void compress(double degree, int speed, int & run_state)
+void compressRobot(double degree, int speed, int & run_state)
 {
   MotorCompress9.resetPosition();
   MotorCompress9.spin(reverse, speed, percent);
   while (MotorCompress9.current(amp) < 0.4) // determines how much the motor can push 
+  //this ampere was determined based on trial test and also helps verify design specific..
   {
     Brain.Screen.clearScreen();
-    Brain.Screen.setCursor(1,1);
+    Brain.Screen.setCursor(2,1);
     Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
-    Brain.timer(seconds),
-    MotorCompress9.current(amp));
+    Brain.timer(seconds), MotorCompress9.current(amp));
     wait(100, msec);
   }
   degree = fabs(MotorCompress9.position(degrees));
@@ -398,7 +395,6 @@ void compress(double degree, int speed, int & run_state)
   //while (MotorCompress9.current(amp) < 0.2)
   {}
   MotorCompress9.stop(brake);
-
   
   run_state = 0;
 }
@@ -427,7 +423,6 @@ void returning(int speed, int & run_state, bool & facingRight)
   driveUntilGreen(speed, run_state); // drive until touches dumping area 
 
   run_state = 3;   // call the compression now 
-
 }
 
 //VEX-E MAIN 
@@ -460,20 +455,16 @@ int main()
     }
     else if (run_state == 2)
     {
-      break;
+      break;//addcompress here
     }
     else if (run_state == 3)
     {
-      compress(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, run_state);
+      compressRobot(COMPRESS_DEGREE, COMPRESS_SPEED, run_state);
     }
     else if (run_state == 4)
     {
       returning(36, run_state, facingRight);
     }
-     else if (run_state == 5)
-    {
-      break; // add push out trash function 
-    } 
   }
   userInter(run_state);
   wait(5,seconds);
