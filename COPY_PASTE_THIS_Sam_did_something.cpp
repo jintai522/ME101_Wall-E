@@ -115,7 +115,6 @@ GROUP 20:
 PROJECT:
   VEX-E
 */
-
 using namespace vex;
 
 const double WHEEL_C = 200; //mm
@@ -441,9 +440,9 @@ void returning(int speed, int & run_state, bool & facingRight)
 
   driveUntilGreen(speed, run_state); // touches the first green line 
 
-  straightDrive(260, speed, run_state); // get pass the green line 
+  straightDrive(220, speed, run_state); // get pass the green line 
 
-  rotateRobot(-90, 18); 
+  rotateRobot(90, 18); 
 
   driveUntilGreen(speed, run_state); // drive until touches dumping area 
 
