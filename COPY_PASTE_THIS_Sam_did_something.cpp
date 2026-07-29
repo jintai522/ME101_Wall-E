@@ -410,9 +410,8 @@ void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
 
   wait(0.5, seconds);
 
-  MotorCompress9.resetPosition();
   MotorCompress9.spin(reverse, speed, percent);
-  while (fabs(MotorCompress9.position(degrees)) <= 360) // backs up a little bit 
+  while (fabs(MotorCompress9.position(degrees)- wall_dist_temp) <= 360) // backs up a little bit 
   {}
   MotorCompress9.stop(brake);
 }
