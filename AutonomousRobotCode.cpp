@@ -95,7 +95,11 @@ PROJECT:
 using namespace vex;
 
 // bump this string any time you want an easy way to confirm which version is loaded
-const char* CODE_VERSION = "v17-detect-60mm";
+// v18: compress() now pushes inward until current crosses COMPRESS_PUSH_CURRENT_THRESHOLD
+// (adopted from Jintai's current-sensing compress) instead of a fixed degree target;
+// goToDisposalBox() now uses a fixed turn/tape-crossing maneuver (adopted from Jintai's
+// returning() idea) instead of odometry-vector navigation.
+const char* CODE_VERSION = "v18-current-compress-fixed-return";
 
 const double WHEEL_C = 200; //mm
 
@@ -107,6 +111,7 @@ const double SCOOPSPEED = 10;
 const double COMPRESS_DEGREE = -4000;
 const int COMPRESS_SPEED = 75;
 const double COMPRESS_CURRENT_MAX = 0.9;
+const double COMPRESS_PUSH_CURRENT_THRESHOLD = 0.4; // amps; push-inward stops once current crosses this (Jintai's idea) instead of a fixed degree
 
 const double SHIFT_DISTANCE = 250; // mm, small lateral step between rows, not another full row
 const int PATH_SPEED = 45; // 30 * 1.5
@@ -463,15 +468,15 @@ void driveUntilGreen(int speed, int & run_state)
   if (run_state != 2) // stopped because of tape, not an object -- a real tape crossing
   {
     snapHeadingToGrid();
-  }
 
-  // capture the field's length the first time a row completes cleanly (reached
-  // green tape, wasn't cut short by an object) -- this is how big the box
-  // actually is this run, since it varies and can't be hardcoded
-  if (run_state != 2 and !fieldLengthKnown)
-  {
-    fieldLength = distance;
-    fieldLengthKnown = true;
+    // capture the field's length the first time a row completes cleanly (reached
+    // green tape, wasn't cut short by an object) -- this is how big the box
+    // actually is this run, since it varies and can't be hardcoded
+    if (!fieldLengthKnown)
+    {
+      fieldLength = distance;
+      fieldLengthKnown = true;
+    }
   }
 }
 
@@ -528,10 +533,13 @@ void spinCompressorTo(double degree, int speed, double current_max, directionTyp
 }
 
 void compress(double degree, int speed, double current_max, int & run_state)
+  // push-inward step stops at whichever comes first: the current threshold (Jintai's
+  // idea -- resistance sensed) or the same degree magnitude as the extend step, so the
+  // compressor can't keep spinning past where it started if current never spikes
 {
-  spinCompressorTo(degree, speed, current_max, reverse);
+  spinCompressorTo(degree, speed, current_max, reverse); // extend/open the compressor arm over the trash
   wait(1, seconds);
-  spinCompressorTo(degree, speed, current_max, forward);
+  spinCompressorTo(degree, speed, COMPRESS_PUSH_CURRENT_THRESHOLD, forward); // push inward, capped at the same |degree|
 
   driveBlind(CLEAR_DISTANCE, PATH_SPEED); // move past the compacted spot so it doesn't immediately re-trigger scoopDetect
 
@@ -550,21 +558,20 @@ void dumpTrash()
 }
 
 void goToDisposalBox(int & run_state)
+  // fixed-maneuver return (adopted from Jintai's returning() idea) instead of the
+  // odometry-vector approach: turn back toward the start column, cross the nearest
+  // row-boundary green tape, turn again, then drive along that edge until the red
+  // disposal tape is found. No posX/posY/fieldLength math needed here -- compress()
+  // already drove past the compacted spot, so no extra backup step is needed either.
 {
-  // the box sits on the same starting column (X=0), halfway down the field's length
-  double targetX = 0;
-  double targetY = fieldLength / 2.0;
+  int turnSign = -1; // toward the start column -- lastTurnSign bookkeeping arrives next version
 
-  double dx = targetX - posX;
-  double dy = targetY - posY;
-  double distance = sqrt(dx*dx + dy*dy);
-  double targetHeading = atan2(dx, dy) * 180.0 / PI;
+  rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
 
-  rotateRobot(normalizeAngle(targetHeading - totalHeadingDeg), PATH_SPEED);
-  driveBlind(distance, PATH_SPEED);
+  driveUntilGreen(PATH_SPEED, run_state); // reach the row-boundary tape
+  driveBlind(SHIFT_DISTANCE, PATH_SPEED); // cross fully over it, onto the edge column
 
-  rotateRobot(normalizeAngle(90 - totalHeadingDeg), PATH_SPEED); // absolute right, relative to the very first starting heading
-
+  rotateRobot(TURN_ANGLE, PATH_SPEED); // face down the edge column toward the disposal marker
   driveUntilRed(PATH_SPEED);
 
   dumpTrash();
