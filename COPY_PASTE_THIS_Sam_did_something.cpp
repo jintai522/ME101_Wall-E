@@ -29,10 +29,10 @@ brain Brain;
 // Robot configuration code.
 inertial BrainInertial = inertial();
 motor MotorDoor3 = motor(PORT3, false);
-motor MotorCompress9 = motor(PORT9, true);
+motor MotorCompress9 = motor(PORT9, false);
 motor LeftMotor = motor(PORT7, false);
 motor RightMotor = motor(PORT12, true);
-motor Scooper8 = motor(PORT8, false);
+motor MotorScoop8 = motor(PORT8, false);
 optical Optical11 = optical(PORT11);
 distance Distance2 = distance(PORT2);
 
@@ -361,9 +361,9 @@ void pathFind(int speed, int & run_state, bool & facingRight)//assume no object 
         turnSign = -1;
       }
 
-      rotateRobot(90 * turnSign, 10);
+      rotateRobot(90 * turnSign, 18);
       straightDrive(ZIGZAG_STEP, speed, run_state);
-      rotateRobot(90 * turnSign, 10);
+      rotateRobot(90 * turnSign, 18);
 
       turnRight = !turnRight;
       facingRight = !facingRight;
@@ -410,15 +410,15 @@ void returning(int speed, int & run_state, bool & facingRight)
   {
     turnSign = -1;
   }
-  straightDrive(-75, 30 ,run_state); // first backs up a bit 
+  straightDrive(-110, 30 ,run_state); // first backs up a bit 
 
-  rotateRobot(90 * turnSign, 10);
+  rotateRobot(90 * turnSign, 18);
 
   driveUntilGreen(speed, run_state); // touches the first green line 
 
-  straightDrive(75, speed, run_state); // get pass the green line 
+  straightDrive(260, speed, run_state); // get pass the green line 
 
-  rotateRobot(-90, 10); 
+  rotateRobot(-90, 18); 
 
   driveUntilGreen(speed, run_state); // drive until touches dumping area 
 
