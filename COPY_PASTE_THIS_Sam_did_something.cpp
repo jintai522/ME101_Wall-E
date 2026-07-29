@@ -297,7 +297,7 @@ void scoopRobot ( int & run_state, int & scoop_count)
   straightDrive(-350,30);
 
   Scooper8.spin(forward,30,percent);
-  wait(2.5, seconds);
+  wait(1.9, seconds);
   Scooper8.stop();
 
   wait(0.5,seconds);
@@ -458,33 +458,56 @@ void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
   MotorCompress9.stop(brake);
 }
 
-void dump ()
+void dump (int wall_dist_tot, int speed, double max_amp, double & wall_dist_temp, int & scoop_count)
 {
- // the actual code
+  MotorCompress9.spin(forward, speed, percent); 
+  while (fabs(MotorCompress9.position(degrees)) < wall_dist_tot - 20 - wall_dist_temp)
+  {}
+  MotorCompress9.stop(brake); 
+
+  MotorCompress9.spin(reverse, speed, percent); 
+  while (MotorCompress9.position(degrees) > 0 && MotorCompress9.current(amp) < max_amp)
+  {}
+  MotorCompress9.stop(); 
 }
 
 
-void returnStart()
+void returnStart(int & run_state)
 {
-  
+  run_state = 0; 
 }
 
-void returnsearch(double & search_width, double & search_length, bool & facingRight)
+void returnsearch(double & search_width, double & search_length, bool & facingRight, int & run_state)
 {
+  int turnSign = 0;
+  if (facingRight)
+  {
+    turnSign = 1;
+  }
+  else
+  {
+    turnSign = -1;
+  }
+
   straightDrive(-search_length, 25);
-
+  rotateRobot(90, 18); 
+  straightDrive(200, 25); 
+  straightDrive(search_width, 25);
+  rotateRobot(90*turnSign, 18); 
+  
+  run_state = 1;
 }
 
 
-void end_or_searchm (double & search_width, double & search_length, bool & facingRight,int & scoop_count)
+void end_or_search (double & search_width, double & search_length, bool & facingRight,int & scoop_count, int & run_state)
 {
  if (scoop_count > 6)
   {
-    returnsearch(search_width,search_length,facingRight);
+    returnsearch(search_width,search_length,facingRight,run_state);
   } 
   else 
   {
-    returnStart();
+    returnStart(run_state);
   }
   scoop_count = 0; 
 }
@@ -530,7 +553,8 @@ int main()
     else if (run_state == 3)
     {
       compressRobot(90, 0.4,wall_dist_temp);
-      //dump ();
+      dump(4500, 50, 0.2, wall_dist_temp, scoop_count); 
+      end_or_search (search_width, search_length,facingRight,scoop_count, run_state);
     }
     else if (run_state == 4)
     {
