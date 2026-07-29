@@ -301,7 +301,7 @@ void scoopRobot ( int & run_state, int & scoop_count)
   straightDrive(-350,30,run_state);
 
   Scooper8.spin(forward,30,percent);
-  wait(3, seconds);
+  wait(2.5, seconds);
   Scooper8.stop();
 
   wait(0.5,seconds);
