@@ -340,10 +340,8 @@ void driveUntilGreen(int speed, int & run_state)
   driveMotor.stop(brake);
 }
 
-void pathFind(int speed, int & run_state, bool & facingRight)//assume no object while turning
+void pathFind(int speed, int & run_state, bool & facingRight)
 {
-  bool turnRight = false; //Start with left turn
-
   while (run_state == 1)
   {
     driveUntilGreen(speed, run_state);
@@ -352,20 +350,18 @@ void pathFind(int speed, int & run_state, bool & facingRight)//assume no object 
       userInter(run_state);
 
       int turnSign = 0;
-      if (turnRight)
-      {
-        turnSign = 1;
-      }
-      else
+      if (facingRight)
       {
         turnSign = -1;
       }
-
+      else
+      {
+        turnSign = 1;
+      }
       rotateRobot(90 * turnSign, 18);
       straightDrive(ZIGZAG_STEP, speed, run_state);
       rotateRobot(90 * turnSign, 18);
 
-      turnRight = !turnRight;
       facingRight = !facingRight;
     }
   }
