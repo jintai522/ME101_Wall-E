@@ -235,23 +235,46 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
-void straightDrive(double distance, int speed,int & run_state)
+void straightDrive(double distance, int speed, int & run_state)
 {
+  directionType dir;//the direction for rotation
+  if (distance >= 0) 
+  {
+    dir = forward;
+  }
+  else
+  {
+    dir = reverse;
+  }
+  double targetDist = fabs(distance);
+
   BrainInertial.resetRotation();
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
 
   while 
-  (((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance))
+  (((fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C)) / 2.0 < targetDist))
   {
-  
     double heading = BrainInertial.rotation(degrees);
     double error = 0 - heading; // target heading is 0 (straight)
 
-    double correction = STRAIGHT_KP * error;
+    double correction = STRAIGHT_KP * error;//how much to sping other way
 
-    LeftMotor.spin(forward, speed + correction, percent);
-    RightMotor.spin(forward, speed - correction, percent);
+    if (dir == reverse) 
+    {
+      correction = -correction;
+    }
+
+    int leftPower  = speed + correction;
+    int rightPower = speed - correction;
+    //clamp max and min
+    if (leftPower > 67) leftPower = 67;
+    if (leftPower < 6) leftPower = 7;
+    if (rightPower > 67) rightPower = 67;
+    if (rightPower < 6) rightPower = 7;
+
+    LeftMotor.spin(dir, leftPower, percent);
+    RightMotor.spin(dir, rightPower, percent);
   }
   driveMotor.stop(brake);
 }
