@@ -132,7 +132,7 @@ const double GREEN_HUE_MAX = 160;
 const double BLUE_HUE_MIN = 200;
 const double BLUE_HUE_MAX = 333;
 
-const double ZIGZAG_STEP = 200; //mm, about robot length
+const double ZIGZAG_STEP = 140; //mm
 
 motor_group driveMotor(LeftMotor,RightMotor);
 
@@ -242,10 +242,7 @@ void straightDrive(double distance, int speed,int & run_state)
   RightMotor.resetPosition();
 
   while 
-  (
-  ((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance)
-  and !(scoopDetect(10,36,run_state))
-  )
+  (((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance))
   {
   
     double heading = BrainInertial.rotation(degrees);
@@ -330,6 +327,7 @@ void pathFind(int speed, int & run_state, bool & facingRight)//assume no object 
       rotateRobot(90 * turnSign, 10);
 
       turnRight = !turnRight;
+      facingRight = !facingRight;
     }
   }
 }
@@ -368,8 +366,9 @@ void returning(int speed, int & run_state, bool & facingRight)
   straightDrive(ZIGZAG_STEP, speed, run_state);
   rotateRobot(-90, 10);
   driveUntilGreen(speed, run_state);
-  
   driveMotor.stop(brake);
+
+  run_state = 0;
 }
 
 //VEX-E MAIN 
@@ -398,7 +397,7 @@ int main()
     userInter(run_state);//Will say what it does
     if (run_state == 1)
     {
-      pathFind(30, run_state, facingRight);
+      pathFind(36, run_state, facingRight);
     }
     else if (run_state == 2)
     {
