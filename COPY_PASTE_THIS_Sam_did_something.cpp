@@ -295,6 +295,36 @@ void straightDrive(double distance, int speed, int & run_state)
   driveMotor.stop(brake);
 }
 
+void scoopRobot ( int & run_state, int & scoop_count)
+{
+  scoop_count++; 
+  straightDrive(-350,30,run_state);
+
+  Scooper8.spin(forward,30,percent);
+  wait(3, seconds);
+  Scooper8.stop();
+
+  wait(0.5,seconds);
+
+  straightDrive(400, 100,run_state);
+  straightDrive(100, 67, run_state);
+  straightDrive(100, 35, run_state);
+
+  Scooper8.spin(reverse,47,percent);
+  wait(1, seconds);
+  Scooper8.stop();
+
+  if (scoop_count > 6)
+  {
+    run_state = 4; 
+  }
+
+  else 
+  {
+    run_state = 1;
+  }
+}
+
 bool seesColor(double hueMin, double hueMax, int colour)
 {
   double hue = Optical11.hue();
