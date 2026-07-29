@@ -378,7 +378,6 @@ void compressRobot(double degree, int speed, int & run_state)
   while (MotorCompress9.current(amp) < 0.4) // determines how much the motor can push 
   //this ampere was determined based on trial test and also helps verify design specific..
   {
-    Brain.Screen.clearScreen();
     Brain.Screen.setCursor(2,1);
     Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
     Brain.timer(seconds), MotorCompress9.current(amp));
