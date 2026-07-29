@@ -400,7 +400,7 @@ void pathFind(int speed, int & run_state, bool & facingRight)
 void compressRobot(double degree, int speed, int & run_state)
 {
   MotorCompress9.resetPosition();
-  MotorCompress9.spin(reverse, speed, percent);
+  MotorCompress9.spin(forward, speed, percent);
   while (MotorCompress9.current(amp) < 0.4) // determines how much the motor can push 
   //this ampere was determined based on trial test and also helps verify design specific..
   {
@@ -415,7 +415,7 @@ void compressRobot(double degree, int speed, int & run_state)
   wait(0.5, seconds);
 
   MotorCompress9.resetPosition();
-  MotorCompress9.spin(forward, speed, percent);
+  MotorCompress9.spin(reverse, speed, percent);
   while (fabs(MotorCompress9.position(degrees)) <= 20) // backs up a little bit 
   //while (MotorCompress9.current(amp) < 0.2)
   {}
