@@ -95,7 +95,7 @@ PROJECT:
 using namespace vex;
 
 // bump this string any time you want an easy way to confirm which version is loaded
-const char* CODE_VERSION = "v16-early-detect-smooth-stop";
+const char* CODE_VERSION = "v17-detect-60mm";
 
 const double WHEEL_C = 200; //mm
 
@@ -112,7 +112,7 @@ const double SHIFT_DISTANCE = 250; // mm, small lateral step between rows, not a
 const int PATH_SPEED = 45; // 30 * 1.5
 const double TURN_ANGLE = 90;      // degrees; flip sign below if left/right come out reversed
 const double SCOOP_DETECT_MIN = 10;  // mm; tune both of these while watching real detections
-const double SCOOP_DETECT_MAX = 150; // mm; widened so trash is caught well before the robot is on top of it
+const double SCOOP_DETECT_MAX = 60;  // mm; 150 was catching the ground since the sensor sits slightly angled down
 const int STOP_RAMP_STEP = 10;    // percent power dropped per ramp step when easing to a stop
 const int STOP_RAMP_DELAY = 30;   // msec between ramp steps
 const double FAST_MULTIPLIER = 2.0; // speed multiplier once the row length is known
