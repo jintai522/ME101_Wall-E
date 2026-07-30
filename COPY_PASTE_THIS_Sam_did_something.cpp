@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <math.h>
 #include <string.h>
-//HI
 
 
 #include "vex.h"
@@ -312,18 +311,18 @@ void scoopRobot ( int & run_state, int & scoop_count)
   driveMotor.spin(forward ,93 ,percent);
   wait(0.9,seconds);
   driveMotor.spin(forward ,44 ,percent);
-  while((fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C))/ 2.0 < 367)
+  while((fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C))/ 2.0 < 380)
   {}
   driveMotor.stop(brake);
 
-  Scooper8.spin(reverse,57,percent);
-  wait(0.67, seconds);
+  Scooper8.spin(reverse,71,percent);
+  wait(0.9, seconds);
   Scooper8.stop();
 
   double currentHeading = BrainInertial.rotation(degrees);
   double angleToTurn = originalHeading - currentHeading;
   rotateRobot(angleToTurn, 18);// turn to align with first backward
-  straightDrive(-400,30);
+  straightDrive(-170,30);
 
   if (scoop_count > 8)
   {
@@ -500,7 +499,7 @@ void dump (int debugdist, int speed)
 
   moveDoor(15 ,forward);//open door
   MotorCompress9.spin(forward, speed, percent); 
-  wait (4.5,seconds);
+  wait (5.5,seconds);
   MotorCompress9.stop();
   wait (2,seconds);
   MotorCompress9.spin(reverse, speed, percent); 
@@ -566,7 +565,7 @@ void end_or_search (double & search_width, double & search_length, bool & facing
 int main()
 {
   configureAllSensors();
-  int run_state = 5;
+  int run_state = 6;
   bool facingRight = true; //assume
   int scoop_count = 0;
   double search_width = 0; 
