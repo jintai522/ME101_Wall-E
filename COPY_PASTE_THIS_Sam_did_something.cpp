@@ -295,7 +295,7 @@ void straightDrive(double distance, int speed)
 void scoopRobot ( int & run_state, int & scoop_count)
 {
   scoop_count++; 
-  straightDrive(-250,30);
+  straightDrive(-210,30);
   wait(0.5,seconds);
   //Collect past heading
   double originalHeading = BrainInertial.rotation(degrees);
@@ -309,13 +309,13 @@ void scoopRobot ( int & run_state, int & scoop_count)
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
   driveMotor.spin(forward ,93 ,percent);
-  wait(1.6,seconds);
-  driveMotor.spin(forward ,40 ,percent);
-  while((fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C))/ 2.0 < 400)
+  wait(0.9,seconds);
+  driveMotor.spin(forward ,44 ,percent);
+  while((fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C))/ 2.0 < 367)
   {}
   driveMotor.stop(brake);
 
-  Scooper8.spin(reverse,47,percent);
+  Scooper8.spin(reverse,50,percent);
   wait(1, seconds);
   Scooper8.stop();
 
@@ -324,7 +324,7 @@ void scoopRobot ( int & run_state, int & scoop_count)
   rotateRobot(angleToTurn, 18);// turn to align with first backward
   straightDrive(-400,30);
 
-  if (scoop_count > 6)
+  if (scoop_count > 9)
   {
     run_state = 4; 
   }
@@ -361,7 +361,7 @@ void driveUntilGreen(int speed, int & run_state)
   BrainInertial.resetRotation();
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
-  while ((!seesColor(GREEN_HUE_MIN, GREEN_HUE_MAX, 6)) and !(scoopDetect(10,36,run_state)))
+  while ((!seesColor(GREEN_HUE_MIN, GREEN_HUE_MAX, 6)) and !(scoopDetect(5,36,run_state)))
   {
     double heading = BrainInertial.rotation(degrees);
     double error = 0 - heading; // target heading is 0 (straight)
@@ -495,6 +495,8 @@ void compressRobot(int speed, double maxAmp)
 
 void dump (int debugdist, int speed, int & scoop_count)
 {
+  straightDrive(188,25);
+
   moveDoor(15 ,forward);//open door
   MotorCompress9.spin(forward, speed, percent); 
   wait (3,seconds);
@@ -504,6 +506,9 @@ void dump (int debugdist, int speed, int & scoop_count)
   while (fabs(MotorCompress9.position(degrees)) > 60)
   {}
   MotorCompress9.stop(brake); 
+
+  straightDrive(-188,25);
+
   Scooper8.spin(reverse,30,percent);
   wait(1.8,seconds);
   Scooper8.stop(brake);
@@ -546,7 +551,7 @@ void returnStart(int & run_state)
 
 void end_or_search (double & search_width, double & search_length, bool & facingRight,int & scoop_count, int & run_state)
 {
- if (scoop_count > 6)
+ if (scoop_count > 9)
   {
     returnSearch(search_width,search_length,facingRight,run_state);
   } 
@@ -563,7 +568,7 @@ int main()
   configureAllSensors();
   int run_state = 5;
   bool facingRight = true; //assume
-  int scoop_count = 0;
+  int scoop_count = 8;
   double search_width = 0; 
   double search_length = 0; 
  
