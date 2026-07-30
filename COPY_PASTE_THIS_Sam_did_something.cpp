@@ -497,16 +497,15 @@ void dump (int debugdist, int speed, int & scoop_count)
 {
   moveDoor(15 ,forward);//open door
   MotorCompress9.spin(forward, speed, percent); 
-  while (fabs(MotorCompress9.position(degrees)) < debugdist)
+  wait (3,seconds);
+  MotorCompress9.stop();
+  wait (2,seconds);
+  MotorCompress9.spin(reverse, speed, percent); 
+  while (fabs(MotorCompress9.position(degrees)) > 0)
   {}
   MotorCompress9.stop(brake); 
+  Scooper8.spin(reverse,30,percent);
 
-  wait (3, seconds);
-
-  MotorCompress9.spin(reverse, speed, percent); 
-  while (MotorCompress9.position(degrees) < 60)
-  {}
-  MotorCompress9.stop(); 
   scoop_count = 0; 
 }
 
@@ -538,7 +537,7 @@ void returnStart(int & run_state)
 
   straightDrive(-267,25);
   driveUntilGreen(36, run_state);
-  straightDrive(99,25);
+  straightDrive(67,25);
 
   run_state = 0; 
 }
