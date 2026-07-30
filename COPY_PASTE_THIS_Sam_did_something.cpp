@@ -294,21 +294,24 @@ void straightDrive(double distance, int speed)
 void scoopRobot ( int & run_state, int & scoop_count)
 {
   scoop_count++; 
-  straightDrive(-350,30);
+  straightDrive(-250,30);
 
   Scooper8.spin(forward,30,percent);
-  wait(1.9, seconds);
+  wait(1.5, seconds);
   Scooper8.stop();
 
   wait(0.5,seconds);
 
-  straightDrive(400, 100);
+  straightDrive(400, 90);
   straightDrive(100, 67);
   straightDrive(100, 35);
 
   Scooper8.spin(reverse,47,percent);
   wait(1, seconds);
   Scooper8.stop();
+
+  straightDrive(-400,30);
+  
 
   if (scoop_count > 6)
   {
@@ -519,7 +522,7 @@ int main()
   configureAllSensors();
   int run_state = 5;
   bool facingRight = true; //assume
-  int scoop_count = 5;
+  int scoop_count = 0;
   double wall_dist_temp = 0; 
   double search_width = 0; 
   double search_length = 0; 
