@@ -295,29 +295,38 @@ void scoopRobot ( int & run_state, int & scoop_count)
 {
   scoop_count++; 
   straightDrive(-250,30);
+  wait(0.5,seconds);
+  //Collect past heading
+  double originalHeading = BrainInertial.rotation(degrees);
 
   Scooper8.spin(forward,30,percent);
-  wait(1.5, seconds);
+  wait(1.2, seconds);
   Scooper8.stop();
 
   wait(0.5,seconds);
 
-  straightDrive(400, 90);
-  straightDrive(100, 67);
-  straightDrive(100, 35);
+  LeftMotor.resetPosition();
+  RightMotor.resetPosition();
+  driveMotor.spin(forward ,90 ,percent);
+  wait(1.5,seconds);
+  driveMotor.spin(forward ,45 ,percent);
+  while((fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C))/ 2.0 < 400)
+  {}
+  driveMotor.stop(brake);
 
   Scooper8.spin(reverse,47,percent);
   wait(1, seconds);
   Scooper8.stop();
 
+  double currentHeading = BrainInertial.rotation(degrees);
+  double angleToTurn = originalHeading - currentHeading;
+  rotateRobot(angleToTurn, 18);// turn to align with first backward
   straightDrive(-400,30);
-  
 
   if (scoop_count > 6)
   {
     run_state = 4; 
   }
-
   else 
   {
     run_state = 1;
