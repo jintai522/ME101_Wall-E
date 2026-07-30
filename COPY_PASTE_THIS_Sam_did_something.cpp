@@ -493,13 +493,13 @@ void compressRobot(int speed, double maxAmp)
 }
 
 
-void dump (int debugdist, int speed, int & scoop_count)
+void dump (int debugdist, int speed)
 {
   straightDrive(188,25);
 
   moveDoor(15 ,forward);//open door
   MotorCompress9.spin(forward, speed, percent); 
-  wait (3,seconds);
+  wait (4.5,seconds);
   MotorCompress9.stop();
   wait (2,seconds);
   MotorCompress9.spin(reverse, speed, percent); 
@@ -512,11 +512,9 @@ void dump (int debugdist, int speed, int & scoop_count)
   Scooper8.spin(reverse,30,percent);
   wait(1.8,seconds);
   Scooper8.stop(brake);
-
-  scoop_count = 0; 
 }
 
-void returnSearch(double & search_width, double & search_length, bool & facingRight, int & run_state)
+void returnSearch(double & search_width, double & search_length, bool & facingRight, int & run_state, int & scoop_count)
 {
   int turnSign = 0;
   if (facingRight)
@@ -533,6 +531,7 @@ void returnSearch(double & search_width, double & search_length, bool & facingRi
   straightDrive(search_width, 25);
   rotateRobot(90*turnSign, 18); 
   run_state = 1;
+  scoop_count = 0; 
 }
 
 void returnStart(int & run_state)
@@ -553,7 +552,7 @@ void end_or_search (double & search_width, double & search_length, bool & facing
 {
  if (scoop_count > 9)
   {
-    returnSearch(search_width,search_length,facingRight,run_state);
+    returnSearch(search_width,search_length,facingRight,run_state,scoop_count);
   } 
   else 
   {
@@ -568,7 +567,7 @@ int main()
   configureAllSensors();
   int run_state = 5;
   bool facingRight = true; //assume
-  int scoop_count = 8;
+  int scoop_count = 0;
   double search_width = 0; 
   double search_length = 0; 
  
@@ -602,7 +601,7 @@ int main()
     {
       compressRobot(90, 0.3);
  
-      dump (2000,70,scoop_count);
+      dump (2000,70);
 
       end_or_search (search_width, search_length,facingRight,scoop_count, run_state);
     }
