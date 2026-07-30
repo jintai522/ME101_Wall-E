@@ -95,7 +95,7 @@ PROJECT:
 using namespace vex;
 
 // bump this string any time you want an easy way to confirm which version is loaded
-const char* CODE_VERSION = "v14-slowdown-80pct";
+const char* CODE_VERSION = "v15-heading-hold";
 
 const double WHEEL_C = 200; //mm
 
@@ -156,8 +156,12 @@ double traveledDistance()
 
 void driveStep(int speed)
 {
+  // correct toward totalHeadingDeg (the true expected heading for the whole run)
+  // instead of "0" -- the inertial sensor is never reset mid-run anymore, so
+  // this is a real absolute reference instead of "whatever I was facing when
+  // this leg started," which is what let misalignment quietly compound before.
   double heading = BrainInertial.rotation(degrees);
-  double error = 0 - heading; // target heading is 0 (straight)
+  double error = totalHeadingDeg - heading;
   double correction = STRAIGHT_KP * error;
 
   LeftMotor.spin(forward, speed + correction, percent);
@@ -262,7 +266,26 @@ void rotateRobot(double targetAngle, int speed)
     correctionAttempts++;
   }
 
-  totalHeadingDeg = normalizeAngle(totalHeadingDeg + targetAngle);
+  // kept unwrapped (not normalized) so it stays on the same raw scale as
+  // BrainInertial.rotation(degrees), which is also never reset mid-run and
+  // therefore never wraps either -- normalizeAngle is only applied to
+  // differences of this value elsewhere, never to the value itself
+  totalHeadingDeg = totalHeadingDeg + targetAngle;
+}
+
+void snapHeadingToGrid()
+  // re-anchors heading drift against the tape itself: corrects to the nearest
+  // 90-degree multiple, since the field's rows are expected to run exactly
+  // perpendicular to the tape lines. Run this every time tape is reached so
+  // small errors get corrected instead of silently carrying into the next row.
+{
+  double nearestGrid = round(totalHeadingDeg / 90.0) * 90.0;
+  double correction = normalizeAngle(nearestGrid - totalHeadingDeg);
+
+  if (fabs(correction) > 0.5)
+  {
+    rotateRobot(correction, PATH_SPEED);
+  }
 }
 
 void showStatusLine1(const char* text)
@@ -347,7 +370,6 @@ void scoopermove (double scooperSpeed, int & run_state)
 
 void straightDrive(double distance, int speed,int & run_state)
 {
-  BrainInertial.resetRotation();
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
 
@@ -395,7 +417,6 @@ bool seesRedTape()
 
 void driveUntilGreen(int speed, int & run_state)
 {
-  BrainInertial.resetRotation();
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
 
@@ -416,6 +437,11 @@ void driveUntilGreen(int speed, int & run_state)
   double distance = traveledDistance();
   finishDrive();
 
+  if (run_state != 2) // stopped because of tape, not an object -- a real tape crossing
+  {
+    snapHeadingToGrid();
+  }
+
   // capture the field's length the first time a row completes cleanly (reached
   // green tape, wasn't cut short by an object) -- this is how big the box
   // actually is this run, since it varies and can't be hardcoded
@@ -428,7 +454,6 @@ void driveUntilGreen(int speed, int & run_state)
 
 void driveUntilRed(int speed)
 {
-  BrainInertial.resetRotation();
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
 
@@ -443,7 +468,6 @@ void driveBlind(double distance, int speed)
   // drives a fixed distance with no scoopDetect check, used to clear the
   // distance sensor away from a just-compacted spot before re-arming detection
 {
-  BrainInertial.resetRotation();
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
 
