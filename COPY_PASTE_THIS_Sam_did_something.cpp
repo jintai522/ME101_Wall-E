@@ -295,7 +295,7 @@ void straightDrive(double distance, int speed)
 void scoopRobot ( int & run_state, int & scoop_count)
 {
   scoop_count++; 
-  straightDrive(-210,30);
+  straightDrive(-220,30);
   wait(0.5,seconds);
   //Collect past heading
   double originalHeading = BrainInertial.rotation(degrees);
@@ -315,8 +315,8 @@ void scoopRobot ( int & run_state, int & scoop_count)
   {}
   driveMotor.stop(brake);
 
-  Scooper8.spin(reverse,50,percent);
-  wait(1, seconds);
+  Scooper8.spin(reverse,57,percent);
+  wait(0.67, seconds);
   Scooper8.stop();
 
   double currentHeading = BrainInertial.rotation(degrees);
@@ -450,7 +450,7 @@ void returning(int speed, int & run_state, bool & facingRight, double & search_w
 
 void compressRobot(int speed, double maxAmp)
 {
-  Scooper8.spin(forward,30,percent);
+  Scooper8.spin(forward,28,percent);
   wait(1.2, seconds);
   Scooper8.stop();
   moveDoor(15 ,reverse );//close door
