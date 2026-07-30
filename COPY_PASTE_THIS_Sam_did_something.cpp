@@ -234,7 +234,7 @@ void rotateRobot(double targetAngle, int speed)
 
 bool scoopDetect(double min, double max, int & run_state)
 {
-  if(Distance2.objectDistance(mm) < max and Distance2.objectDistance(mm) > min)
+  if(Distance2.objectDistance(mm) < max and Distance2.objectDistance(mm) > min and run_state == 1)
   {
     Brain.Screen.setCursor(1,1);
     Brain.Screen.clearLine(1);
@@ -308,9 +308,9 @@ void scoopRobot ( int & run_state, int & scoop_count)
 
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
-  driveMotor.spin(forward ,90 ,percent);
-  wait(1.5,seconds);
-  driveMotor.spin(forward ,45 ,percent);
+  driveMotor.spin(forward ,93 ,percent);
+  wait(1.6,seconds);
+  driveMotor.spin(forward ,40 ,percent);
   while((fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C))/ 2.0 < 400)
   {}
   driveMotor.stop(brake);
@@ -505,6 +505,8 @@ void dump (int debugdist, int speed, int & scoop_count)
   {}
   MotorCompress9.stop(brake); 
   Scooper8.spin(reverse,30,percent);
+  wait(1.8,seconds);
+  Scooper8.stop(brake);
 
   scoop_count = 0; 
 }
@@ -593,7 +595,7 @@ int main()
     }
     else if (run_state == 3)
     {
-      compressRobot(90, 0.4);
+      compressRobot(90, 0.3);
  
       dump (2000,70,scoop_count);
 
