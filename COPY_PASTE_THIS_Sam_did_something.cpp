@@ -501,7 +501,7 @@ void dump (int debugdist, int speed, int & scoop_count)
   MotorCompress9.stop();
   wait (2,seconds);
   MotorCompress9.spin(reverse, speed, percent); 
-  while (fabs(MotorCompress9.position(degrees)) > 0)
+  while (fabs(MotorCompress9.position(degrees)) > 60)
   {}
   MotorCompress9.stop(brake); 
   Scooper8.spin(reverse,30,percent);
