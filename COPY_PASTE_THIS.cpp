@@ -95,7 +95,7 @@ PROJECT:
 using namespace vex;
 
 // bump this string any time you want an easy way to confirm which version is loaded
-const char* CODE_VERSION = "v15-heading-hold";
+const char* CODE_VERSION = "v16-early-detect-smooth-stop";
 
 const double WHEEL_C = 200; //mm
 
@@ -111,6 +111,10 @@ const double COMPRESS_CURRENT_MAX = 0.9;
 const double SHIFT_DISTANCE = 250; // mm, small lateral step between rows, not another full row
 const int PATH_SPEED = 45; // 30 * 1.5
 const double TURN_ANGLE = 90;      // degrees; flip sign below if left/right come out reversed
+const double SCOOP_DETECT_MIN = 10;  // mm; tune both of these while watching real detections
+const double SCOOP_DETECT_MAX = 150; // mm; widened so trash is caught well before the robot is on top of it
+const int STOP_RAMP_STEP = 10;    // percent power dropped per ramp step when easing to a stop
+const int STOP_RAMP_DELAY = 30;   // msec between ramp steps
 const double FAST_MULTIPLIER = 2.0; // speed multiplier once the row length is known
 const double SLOWDOWN_START_FRACTION = 0.80; // slow back to 1x once this fraction of the known length is covered
 const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while watching the live readout
@@ -154,7 +158,8 @@ double traveledDistance()
   return (fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0;
 }
 
-void driveStep(int speed)
+void driveStep(double speed)
+  // speed can be negative to drive in reverse -- still heading-corrected either way
 {
   // correct toward totalHeadingDeg (the true expected heading for the whole run)
   // instead of "0" -- the inertial sensor is never reset mid-run anymore, so
@@ -164,12 +169,39 @@ void driveStep(int speed)
   double error = totalHeadingDeg - heading;
   double correction = STRAIGHT_KP * error;
 
-  LeftMotor.spin(forward, speed + correction, percent);
-  RightMotor.spin(forward, speed - correction, percent);
+  double leftPower = speed + correction;
+  double rightPower = speed - correction;
+
+  LeftMotor.spin((leftPower >= 0) ? forward : reverse, fabs(leftPower), percent);
+  RightMotor.spin((rightPower >= 0) ? forward : reverse, fabs(rightPower), percent);
 }
 
-void finishDrive()
+void driveForDuration(double seconds, double speed)
+  // heading-corrected driving for a fixed duration (not a fixed distance) --
+  // used by scoopermove so the scoop-approach stays aligned instead of
+  // drifting off heading like the old raw equal-percentage commands did
 {
+  int steps = (int)(seconds * 1000 / STOP_RAMP_DELAY);
+  for (int i = 0; i < steps; i++)
+  {
+    driveStep(speed);
+    wait(STOP_RAMP_DELAY, msec);
+  }
+  driveMotor.stop(brake);
+}
+
+void finishDrive(double fromSpeed)
+  // eases to a stop instead of slamming the brake -- an abrupt full-brake
+  // stop (especially from the faster 2x search speed) was what caused the
+  // wobble/misalignment right as an object was detected
+{
+  double p = fromSpeed;
+  while (fabs(p) > STOP_RAMP_STEP)
+  {
+    p = (p > 0) ? p - STOP_RAMP_STEP : p + STOP_RAMP_STEP;
+    driveStep(p);
+    wait(STOP_RAMP_DELAY, msec);
+  }
   driveMotor.stop(brake);
   trackMove(traveledDistance());
 }
@@ -331,12 +363,10 @@ void scoopermove (double scooperSpeed, int & run_state)
   //bring down scooper
   //go foward
   //bring up scooper
+  // every drivetrain move below is heading-corrected (driveForDuration), so a
+  // misaligned approach doesn't get worse during the scoop and cause a miss
 {
-  LeftMotor.spin(reverse,15,percent);
-  RightMotor.spin(reverse,15,percent);
-  wait(2.8,seconds);
-  LeftMotor.stop();
-  RightMotor.stop();
+  driveForDuration(2.8, -15);
 
   wait(0.5,seconds);
 
@@ -346,17 +376,9 @@ void scoopermove (double scooperSpeed, int & run_state)
 
   wait(0.5,seconds);
 
-  LeftMotor.spin(forward,100,percent);
-  RightMotor.spin(forward,100,percent);
-  wait(1,seconds);
-   LeftMotor.spin(forward,67,percent);
-  RightMotor.spin(forward,67,percent);
-  wait(0.5,seconds);
-  LeftMotor.spin(forward,23,percent);
-  RightMotor.spin(forward,23,percent);
-  wait(0.5,seconds);
-  LeftMotor.stop();
-  RightMotor.stop();
+  driveForDuration(1, 100);
+  driveForDuration(0.5, 67);
+  driveForDuration(0.5, 23);
 
   Scooper8.spin(reverse,47,percent);
   wait(1, seconds);
@@ -373,11 +395,11 @@ void straightDrive(double distance, int speed,int & run_state)
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
 
-  while (traveledDistance() < distance and !(scoopDetect(10,30,run_state)))
+  while (traveledDistance() < distance and !(scoopDetect(SCOOP_DETECT_MIN,SCOOP_DETECT_MAX,run_state)))
   {
     driveStep(speed);
   }
-  finishDrive();
+  finishDrive(speed);
 }
 
 void userInter(int & run_state)
@@ -424,10 +446,11 @@ void driveUntilGreen(int speed, int & run_state)
   // every pass after that: drive at FAST_MULTIPLIER speed, then ease back to base speed
   // once SLOWDOWN_START_FRACTION of the known length is covered, so it doesn't blow past the tape.
   double slowdownStart = fieldLength * SLOWDOWN_START_FRACTION;
+  int stepSpeed = speed;
 
-  while (!seesGreenTape() and !(scoopDetect(10,30,run_state)))
+  while (!seesGreenTape() and !(scoopDetect(SCOOP_DETECT_MIN,SCOOP_DETECT_MAX,run_state)))
   {
-    int stepSpeed = speed;
+    stepSpeed = speed;
     if (fieldLengthKnown and traveledDistance() < slowdownStart)
     {
       stepSpeed = speed * FAST_MULTIPLIER;
@@ -435,7 +458,7 @@ void driveUntilGreen(int speed, int & run_state)
     driveStep(stepSpeed);
   }
   double distance = traveledDistance();
-  finishDrive();
+  finishDrive(stepSpeed);
 
   if (run_state != 2) // stopped because of tape, not an object -- a real tape crossing
   {
@@ -461,7 +484,7 @@ void driveUntilRed(int speed)
   {
     driveStep(speed);
   }
-  finishDrive();
+  finishDrive(speed);
 }
 
 void driveBlind(double distance, int speed)
@@ -475,7 +498,7 @@ void driveBlind(double distance, int speed)
   {
     driveStep(speed);
   }
-  finishDrive();
+  finishDrive(speed);
 }
 
 void pathFind(int & run_state)
