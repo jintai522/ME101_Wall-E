@@ -48,7 +48,7 @@ void initializeRandomSeed(){
     xAxis + yAxis + zAxis
   );
   // Set the seed
-  srand(seed); 
+  srand(seed);
 }
 
 // Converts a color to a string
@@ -75,34 +75,10 @@ const char* convertColorToString(color col) {
 }
 
 
-// Convert colorType to string
-const char* convertColorToString(colorType col) {
-  if (col == colorType::red) return "red";
-  else if (col == colorType::green) return "green";
-  else if (col == colorType::blue) return "blue";
-  else if (col == colorType::white) return "white";
-  else if (col == colorType::yellow) return "yellow";
-  else if (col == colorType::orange) return "orange";
-  else if (col == colorType::purple) return "purple";
-  else if (col == colorType::cyan) return "cyan";
-  else if (col == colorType::black) return "black";
-  else if (col == colorType::transparent) return "transparent";
-  else if (col == colorType::red_violet) return "red_violet";
-  else if (col == colorType::violet) return "violet";
-  else if (col == colorType::blue_violet) return "blue_violet";
-  else if (col == colorType::blue_green) return "blue_green";
-  else if (col == colorType::yellow_green) return "yellow_green";
-  else if (col == colorType::yellow_orange) return "yellow_orange";
-  else if (col == colorType::red_orange) return "red_orange";
-  else if (col == colorType::none) return "none";
-  else return "unknown";
-}
-
-
 void vexcodeInit() {
 
   // Initializing random seed.
-  initializeRandomSeed(); 
+  initializeRandomSeed();
 }
 
 #pragma endregion VEXcode Generated Robot Configuration
@@ -117,6 +93,9 @@ PROJECT:
 */
 
 using namespace vex;
+
+// bump this string any time you want an easy way to confirm which version is loaded
+const char* CODE_VERSION = "v9-disposal-box";
 
 const double WHEEL_C = 200; //mm
 
@@ -137,6 +116,9 @@ const double TURN_ANGLE = 90;      // degrees; flip sign below if left/right com
 const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while watching the live readout
 const double GREEN_HUE_MAX = 160;
 const double GREEN_BRIGHTNESS_MIN = 15; // percent; lower if tape never registers, raise if false triggers
+const double RED_HUE_MIN = 340;      // degrees; red wraps around 0, so this is a two-sided range (>=340 or <=20)
+const double RED_HUE_MAX = 20;
+const double RED_BRIGHTNESS_MIN = 15; // percent; tune the same way as GREEN_BRIGHTNESS_MIN
 const double CLEAR_DISTANCE = 150; // mm, blind drive after compressing so the sensor clears the spot
 const int STATUS_REFRESH_INTERVAL = 10; // loop iterations between screen redraws
 
@@ -149,6 +131,11 @@ double totalHeadingDeg = 0;
 double posX = 0; // mm
 double posY = 0; // mm
 
+// the field's length varies box to box, so this is measured the first time a
+// row is driven cleanly end-to-end (green tape to green tape), not hardcoded
+double fieldLength = 0;
+bool fieldLengthKnown = false;
+
 void trackMove(double distanceTraveled)
 {
   posX += distanceTraveled * sin(totalHeadingDeg * PI / 180.0);
@@ -160,6 +147,27 @@ double normalizeAngle(double angle)
   while (angle > 180) angle -= 360;
   while (angle < -180) angle += 360;
   return angle;
+}
+
+double traveledDistance()
+{
+  return (fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0;
+}
+
+void driveStep(int speed)
+{
+  double heading = BrainInertial.rotation(degrees);
+  double error = 0 - heading; // target heading is 0 (straight)
+  double correction = STRAIGHT_KP * error;
+
+  LeftMotor.spin(forward, speed + correction, percent);
+  RightMotor.spin(forward, speed - correction, percent);
+}
+
+void finishDrive()
+{
+  driveMotor.stop(brake);
+  trackMove(traveledDistance());
 }
 
 void configureAllSensors()
@@ -200,7 +208,7 @@ void rotateRobot(double targetAngle, int speed)
       power = -speed;
     }
 
-    if (power > 0 and power < 5) 
+    if (power > 0 and power < 5)
     {
       power = 5;
     }
@@ -229,13 +237,35 @@ void rotateRobot(double targetAngle, int speed)
   totalHeadingDeg = normalizeAngle(totalHeadingDeg + targetAngle);
 }
 
+void showStatusLine1(const char* text)
+{
+  Brain.Screen.setCursor(1,1);
+  Brain.Screen.clearLine(1);
+  Brain.Screen.print("%s", text);
+}
+
+void showSensorReadout(double hue, double brightness, color col)
+{
+  static int sampleCount = 0;
+
+  // throttle the readout so the screen redraw doesn't slow down sensing
+  if (sampleCount % STATUS_REFRESH_INTERVAL == 0)
+  {
+    Brain.Screen.setCursor(2,1);
+    Brain.Screen.clearLine(2);
+    Brain.Screen.print("hue %.0f bright %.0f", hue, brightness);
+    Brain.Screen.setCursor(3,1);
+    Brain.Screen.clearLine(3);
+    Brain.Screen.print("color: %s", convertColorToString(col));
+  }
+  sampleCount++;
+}
+
 bool scoopDetect(double min, double max, int & run_state)
 {
   if(Distance2.objectDistance(mm) < max and Distance2.objectDistance(mm) > min)
   {
-    Brain.Screen.setCursor(1,1);
-    Brain.Screen.clearLine(1);
-    Brain.Screen.print("Object Detected");
+    showStatusLine1("Object Detected");
     run_state = 2;
     return true;
   }
@@ -243,12 +273,6 @@ bool scoopDetect(double min, double max, int & run_state)
   {
     return false;
   }
-}
-
-double scooperTime(double scooperdegree, double scooperspeed)
-{
-  double result = scooperdegree / (scooperspeed / 100 * 120 / 60 * 360);
-  return result;
 }
 
 void scoopermove (double scooperSpeed, int & run_state)
@@ -299,22 +323,11 @@ void straightDrive(double distance, int speed,int & run_state)
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
 
-  while 
-  (
-  ((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance)
-  and !(scoopDetect(10,30,run_state))
-  )
+  while (traveledDistance() < distance and !(scoopDetect(10,30,run_state)))
   {
-    double heading = BrainInertial.rotation(degrees);
-    double error = 0 - heading; // target heading is 0 (straight)
-
-    double correction = STRAIGHT_KP * error;
-
-    LeftMotor.spin(forward, speed + correction, percent);
-    RightMotor.spin(forward, speed - correction, percent);
+    driveStep(speed);
   }
-  driveMotor.stop(brake);
-  trackMove((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0);
+  finishDrive();
 }
 
 void userInter(int & run_state)
@@ -324,39 +337,32 @@ void userInter(int & run_state)
   if (run_state == 1) Brain.Screen.print("Searching");
   else if (run_state == 2) Brain.Screen.print("Scooping");
   else if (run_state == 3) Brain.Screen.print("Compressing");
-  else if (run_state == 4) Brain.Screen.print("Returning to start");
+  else if (run_state == 4) Brain.Screen.print("Heading to disposal box");
   else if (run_state == 0) Brain.Screen.print("Finished");
 }
 
 bool seesGreenTape()
 {
-  static int sampleCount = 0;
-
   double hue = Optical11.hue();
   double brightness = Optical11.brightness();
-  color col = Optical11.color();
   bool isGreen = (hue >= GREEN_HUE_MIN and hue <= GREEN_HUE_MAX and brightness > GREEN_BRIGHTNESS_MIN);
 
-  // throttle the hue/brightness readout so the screen redraw doesn't slow down sensing
-  if (sampleCount % STATUS_REFRESH_INTERVAL == 0)
-  {
-    Brain.Screen.setCursor(2,1);
-    Brain.Screen.clearLine(2);
-    Brain.Screen.print("hue %.0f bright %.0f", hue, brightness);
-    Brain.Screen.setCursor(3,1);
-    Brain.Screen.clearLine(3);
-    Brain.Screen.print("color: %s", convertColorToString(col));
-  }
-  sampleCount++;
-
-  if (isGreen)
-  {
-    Brain.Screen.setCursor(1,1);
-    Brain.Screen.clearLine(1);
-    Brain.Screen.print("Green Tape Detected");
-  }
+  showSensorReadout(hue, brightness, Optical11.color());
+  if (isGreen) showStatusLine1("Green Tape Detected");
 
   return isGreen;
+}
+
+bool seesRedTape()
+{
+  double hue = Optical11.hue();
+  double brightness = Optical11.brightness();
+  bool isRed = (hue >= RED_HUE_MIN or hue <= RED_HUE_MAX) and brightness > RED_BRIGHTNESS_MIN;
+
+  showSensorReadout(hue, brightness, Optical11.color());
+  if (isRed) showStatusLine1("Red Tape Detected");
+
+  return isRed;
 }
 
 void driveUntilGreen(int speed, int & run_state)
@@ -367,16 +373,32 @@ void driveUntilGreen(int speed, int & run_state)
 
   while (!seesGreenTape() and !(scoopDetect(10,30,run_state)))
   {
-    double heading = BrainInertial.rotation(degrees);
-    double error = 0 - heading; // target heading is 0 (straight)
-
-    double correction = STRAIGHT_KP * error;
-
-    LeftMotor.spin(forward, speed + correction, percent);
-    RightMotor.spin(forward, speed - correction, percent);
+    driveStep(speed);
   }
-  driveMotor.stop(brake);
-  trackMove((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0);
+  double distance = traveledDistance();
+  finishDrive();
+
+  // capture the field's length the first time a row completes cleanly (reached
+  // green tape, wasn't cut short by an object) -- this is how big the box
+  // actually is this run, since it varies and can't be hardcoded
+  if (run_state != 2 and !fieldLengthKnown)
+  {
+    fieldLength = distance;
+    fieldLengthKnown = true;
+  }
+}
+
+void driveUntilRed(int speed)
+{
+  BrainInertial.resetRotation();
+  LeftMotor.resetPosition();
+  RightMotor.resetPosition();
+
+  while (!seesRedTape())
+  {
+    driveStep(speed);
+  }
+  finishDrive();
 }
 
 void driveBlind(double distance, int speed)
@@ -387,18 +409,11 @@ void driveBlind(double distance, int speed)
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
 
-  while (((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0 < distance))
+  while (traveledDistance() < distance)
   {
-    double heading = BrainInertial.rotation(degrees);
-    double error = 0 - heading;
-
-    double correction = STRAIGHT_KP * error;
-
-    LeftMotor.spin(forward, speed + correction, percent);
-    RightMotor.spin(forward, speed - correction, percent);
+    driveStep(speed);
   }
-  driveMotor.stop(brake);
-  trackMove((fabs(LeftMotor.position(turns)*WHEEL_C)+fabs(RightMotor.position(turns)*WHEEL_C))/ 2.0);
+  finishDrive();
 }
 
 void pathFind(int & run_state)
@@ -424,38 +439,56 @@ void pathFind(int & run_state)
   run_state = 0; // covered every row with no more objects found
 }
 
-void compress(double degree, int speed, double current_max, int & run_state)
+void spinCompressorTo(double degree, int speed, double current_max, directionType dir)
 {
   MotorCompress9.resetPosition();
-  MotorCompress9.spin(reverse, speed, percent);
+  MotorCompress9.spin(dir, speed, percent);
   while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
   {}
   MotorCompress9.stop(brake);
+}
 
+void compress(double degree, int speed, double current_max, int & run_state)
+{
+  spinCompressorTo(degree, speed, current_max, reverse);
   wait(1, seconds);
-
-  MotorCompress9.resetPosition();
-  MotorCompress9.spin(forward, speed, percent);
-  while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
-  {}
-  MotorCompress9.stop(brake);
+  spinCompressorTo(degree, speed, current_max, forward);
 
   driveBlind(CLEAR_DISTANCE, PATH_SPEED); // move past the compacted spot so it doesn't immediately re-trigger scoopDetect
 
-  run_state = 4; // head back to the starting position
+  run_state = 4; // head to the disposal box
 }
 
-void returnToStart(int & run_state)
+void dumpTrash()
 {
-  double dx = -posX;
-  double dy = -posY;
+  Scooper8.spin(forward, SCOOPSPEED, percent); // bring the scooper down
+  wait(2, seconds);
+  Scooper8.stop();
+
+  spinCompressorTo(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, forward); // push all the trash out
+  wait(1, seconds);
+  spinCompressorTo(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, reverse); // retract back
+}
+
+void goToDisposalBox(int & run_state)
+{
+  // the box sits on the same starting column (X=0), halfway down the field's length
+  double targetX = 0;
+  double targetY = fieldLength / 2.0;
+
+  double dx = targetX - posX;
+  double dy = targetY - posY;
   double distance = sqrt(dx*dx + dy*dy);
   double targetHeading = atan2(dx, dy) * 180.0 / PI;
 
   rotateRobot(normalizeAngle(targetHeading - totalHeadingDeg), PATH_SPEED);
   driveBlind(distance, PATH_SPEED);
 
-  rotateRobot(normalizeAngle(0 - totalHeadingDeg), PATH_SPEED); // face the original starting heading
+  rotateRobot(normalizeAngle(90 - totalHeadingDeg), PATH_SPEED); // absolute right, relative to the very first starting heading
+
+  driveUntilRed(PATH_SPEED);
+
+  dumpTrash();
 
   run_state = 0;
 }
@@ -469,8 +502,14 @@ int main()
     1 run pattern
     2 run scooping
     3 run compress
-    4 return to start
+    4 go to disposal box and dump
   */
+
+  Brain.Screen.clearScreen();
+  Brain.Screen.setCursor(1,1);
+  Brain.Screen.print("Code %s", CODE_VERSION);
+  Brain.Screen.setCursor(2,1);
+  Brain.Screen.print("Press to start");
 
   while (!Brain.buttonCheck.pressing())
   {}
@@ -495,7 +534,7 @@ int main()
     }
     else if (run_state == 4)
     {
-      returnToStart(run_state);
+      goToDisposalBox(run_state);
     }
   }
 
