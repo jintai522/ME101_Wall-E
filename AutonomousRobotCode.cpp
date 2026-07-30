@@ -105,7 +105,11 @@ using namespace vex;
 // is still marked by red tape (driveUntilRed/seesRedTape, unchanged).
 // v20: SLOWDOWN_START_FRACTION dropped from 0.80 to 0.70 -- eases back to 1x speed
 // earlier in the row so there's more room to settle before the green tape.
-const char* CODE_VERSION = "v20-earlier-slowdown";
+// v21: compress()'s push-inward step was spinning past where the extend step started
+// because spinCompressorUntilCurrent() had no degree cap -- now uses spinCompressorTo()
+// again (degree AND current threshold) so it retracts/pushes the same |degree| (4000)
+// as the extend step, not an unbounded spin waiting for a current spike.
+const char* CODE_VERSION = "v21-compress-degree-cap";
 
 const double WHEEL_C = 200; //mm
 
@@ -569,23 +573,14 @@ void spinCompressorTo(double degree, int speed, double current_max, directionTyp
   MotorCompress9.stop(brake);
 }
 
-void spinCompressorUntilCurrent(int speed, double current_max, directionType dir)
-  // spins until current crosses current_max (Jintai's idea -- resistance sensed
-  // means the trash is compacted), no degree limit
-{
-  MotorCompress9.spin(dir, speed, percent);
-  while (MotorCompress9.current(amp) <= current_max)
-  {}
-  MotorCompress9.stop(brake);
-}
-
 void compress(double degree, int speed, double current_max, int & run_state)
-  // push-inward step stops once current crosses COMPRESS_PUSH_CURRENT_THRESHOLD
-  // (Jintai's idea) instead of a fixed degree target
+  // push-inward step stops at whichever comes first: the current threshold (Jintai's
+  // idea -- resistance sensed) or the same degree magnitude as the extend step, so the
+  // compressor can't keep spinning past where it started if current never spikes
 {
   spinCompressorTo(degree, speed, current_max, reverse); // extend/open the compressor arm over the trash
   wait(1, seconds);
-  spinCompressorUntilCurrent(speed, COMPRESS_PUSH_CURRENT_THRESHOLD, forward); // push inward until current spikes
+  spinCompressorTo(degree, speed, COMPRESS_PUSH_CURRENT_THRESHOLD, forward); // push inward, capped at the same |degree|
 
   driveBlind(CLEAR_DISTANCE, PATH_SPEED); // move past the compacted spot so it doesn't immediately re-trigger scoopDetect
 
