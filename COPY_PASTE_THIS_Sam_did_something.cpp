@@ -143,7 +143,7 @@ void configureAllSensors()
   Optical11.setLight(ledState::on);
 }
 
-void movedoor (int speed, directionType motorDir)
+void moveDoor (int speed, directionType motorDir)
 {
   double degree = 0; 
   MotorDoor3.spin(motorDir, speed, percent);
@@ -151,12 +151,13 @@ void movedoor (int speed, directionType motorDir)
   {
     Brain.Screen.clearScreen();
     Brain.Screen.setCursor(2,1);
-    Brain.Screen.print("%6.2f  L:%.2f  R:%.2f  Piston:%.2f\n",
+    Brain.Screen.print("%6.2f  A:%.2f  R:%.2f  Piston:%.2f\n",
     Brain.timer(seconds),MotorDoor3.current(amp));
     wait(100, msec);
   }
   degree = fabs(MotorDoor3.position(degrees));
   MotorDoor3.stop(brake);
+  Brain.Screen.clearLine(2);
 }
 
 
@@ -444,45 +445,53 @@ void returning(int speed, int & run_state, bool & facingRight, double & search_w
   search_width = endwidth - startwidth; // measures "y" pos/ length between the car to the bottom green tape when it got full midtrack 
   search_length = endlength - startlength; //measures "x" pos / length between car and the dumping place 
 
-  run_state = 3;   // call the compression now 
+  run_state = 3; 
 }
 
 void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
 {
+  Scooper8.spin(reverse,47,percent);
+  wait(1, seconds);
+  Scooper8.stop();// put down scooper
+  moveDoor(15 ,forward );//close door
+
   MotorCompress9.resetPosition();
+
+  double maxCurrent = 0;
+  double startTime = Brain.timer(seconds);
+
   MotorCompress9.spin(forward, speed, percent);
   while (MotorCompress9.current(amp) < maxAmp) // determines how much the motor can push 
   //this ampere was determined based on trial test and also helps verify design specific..
   {
+    double currentAmp = MotorCompress9.current(amp);
+
+    double currentTime = Brain.timer(seconds);
     Brain.Screen.setCursor(2,1);
     Brain.Screen.print("%6.2f  A:%.2f  R:%.2f  Piston:%.2f\n",
-    Brain.timer(seconds), MotorCompress9.current(amp));
-    wait(100, msec);
+    currentTime, currentAmp);
+    wait(0.1, seconds);
+    
+    if (currentAmp > maxCurrent) 
+    {
+      maxCurrent = currentAmp;
+    }
   }
-  wall_dist_temp = fabs(MotorCompress9.position(degrees));
   MotorCompress9.stop(brake);
+  wall_dist_temp = fabs(MotorCompress9.position(degrees));
 
-  wait(0.5, seconds);
+  double endTime = Brain.timer(seconds);
+  double compressionTime = endTime - startTime;
+  Brain.Screen.clearLine(2);
+  Brain.Screen.setCursor(3,1);
+  Brain.Screen.print("Time: %.2f sec", compressionTime);
+  Brain.Screen.setCursor(4,1);
+  Brain.Screen.print("Max: %.2f A", maxCurrent);
 
   MotorCompress9.spin(reverse, speed, percent);
-  while (fabs(MotorCompress9.position(degrees)- wall_dist_temp) <= 360) // backs up a little bit 
-  {}
+  wait(2,seconds);
   MotorCompress9.stop(brake);
 }
-
-void dump (int wall_dist_tot, int speed, double max_amp, double & wall_dist_temp, int & scoop_count)
-{
-  MotorCompress9.spin(forward, speed, percent); 
-  while (fabs(MotorCompress9.position(degrees)) < wall_dist_tot - 20 - wall_dist_temp)
-  {}
-  MotorCompress9.stop(brake); 
-
-  MotorCompress9.spin(reverse, speed, percent); 
-  while (MotorCompress9.position(degrees) > 0 && MotorCompress9.current(amp) < max_amp)
-  {}
-  MotorCompress9.stop(); 
-}
-
 
 void returnStart(int & run_state)
 {
@@ -500,16 +509,13 @@ void returnsearch(double & search_width, double & search_length, bool & facingRi
   {
     turnSign = -1;
   }
-
   straightDrive(-search_length, 25);
   rotateRobot(90, 18); 
   straightDrive(200, 25); 
   straightDrive(search_width, 25);
   rotateRobot(90*turnSign, 18); 
-  
   run_state = 1;
 }
-
 
 void end_or_search (double & search_width, double & search_length, bool & facingRight,int & scoop_count, int & run_state)
 {
@@ -525,7 +531,6 @@ void end_or_search (double & search_width, double & search_length, bool & facing
 }
 
 //VEX-E MAIN 
-
 int main()
 {
   configureAllSensors();
@@ -565,7 +570,9 @@ int main()
     else if (run_state == 3)
     {
       compressRobot(90, 0.4,wall_dist_temp);
-      dump(4500, 50, 0.2, wall_dist_temp, scoop_count); 
+ 
+      //dump
+
       end_or_search (search_width, search_length,facingRight,scoop_count, run_state);
     }
     else if (run_state == 4)
