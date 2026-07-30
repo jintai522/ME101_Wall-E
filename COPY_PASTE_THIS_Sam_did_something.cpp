@@ -448,7 +448,7 @@ void returning(int speed, int & run_state, bool & facingRight, double & search_w
   run_state = 3; 
 }
 
-void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
+void compressRobot(int speed, double maxAmp)
 {
   Scooper8.spin(forward,30,percent);
   wait(1.2, seconds);
@@ -478,7 +478,6 @@ void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
     }
   }
   MotorCompress9.stop(brake);
-  wall_dist_temp = fabs(MotorCompress9.position(degrees));
 
   double endTime = Brain.timer(seconds);
   double compressionTime = endTime - startTime;
@@ -489,8 +488,26 @@ void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
   Brain.Screen.print("Max: %.2f A", maxCurrent);
 
   MotorCompress9.spin(reverse, speed, percent);
-  wait(2.5,seconds);
+  wait(1,seconds);
   MotorCompress9.stop(brake);
+}
+
+
+void dump (int debugdist, int speed, int & scoop_count)
+{
+  moveDoor(15 ,forward);//open door
+  MotorCompress9.spin(forward, speed, percent); 
+  while (fabs(MotorCompress9.position(degrees)) < debugdist)
+  {}
+  MotorCompress9.stop(brake); 
+
+  wait (3, seconds);
+
+  MotorCompress9.spin(reverse, speed, percent); 
+  while (MotorCompress9.position(degrees) < 60)
+  {}
+  MotorCompress9.stop(); 
+  scoop_count = 0; 
 }
 
 void returnSearch(double & search_width, double & search_length, bool & facingRight, int & run_state)
@@ -514,13 +531,14 @@ void returnSearch(double & search_width, double & search_length, bool & facingRi
 
 void returnStart(int & run_state)
 {
-  rotateRobot(90,18);
+ rotateRobot(90,18);
   straightDrive(300,25);
 
   rotateRobot(90,18);
 
-  straightDrive(-220,25);
+  straightDrive(-267,25);
   driveUntilGreen(36, run_state);
+  straightDrive(99,25);
 
   run_state = 0; 
 }
@@ -545,7 +563,6 @@ int main()
   int run_state = 5;
   bool facingRight = true; //assume
   int scoop_count = 0;
-  double wall_dist_temp = 0; 
   double search_width = 0; 
   double search_length = 0; 
  
@@ -577,9 +594,9 @@ int main()
     }
     else if (run_state == 3)
     {
-      compressRobot(90, 0.4,wall_dist_temp);
+      compressRobot(90, 0.4);
  
-      //dump
+      dump (2000,70,scoop_count);
 
       end_or_search (search_width, search_length,facingRight,scoop_count, run_state);
     }
