@@ -103,7 +103,9 @@ using namespace vex;
 // adopted from Jintai's BLUE_HUE_MIN/MAX) via disposalSignalDetect() -- seeing blue sets
 // run_state = 4 to head back, same as finishing a compress. The disposal zone itself
 // is still marked by red tape (driveUntilRed/seesRedTape, unchanged).
-const char* CODE_VERSION = "v19-blue-tape-return-signal";
+// v20: SLOWDOWN_START_FRACTION dropped from 0.80 to 0.70 -- eases back to 1x speed
+// earlier in the row so there's more room to settle before the green tape.
+const char* CODE_VERSION = "v20-earlier-slowdown";
 
 const double WHEEL_C = 200; //mm
 
@@ -125,7 +127,7 @@ const double SCOOP_DETECT_MAX = 60;  // mm; 150 was catching the ground since th
 const int STOP_RAMP_STEP = 10;    // percent power dropped per ramp step when easing to a stop
 const int STOP_RAMP_DELAY = 30;   // msec between ramp steps
 const double FAST_MULTIPLIER = 2.0; // speed multiplier once the row length is known
-const double SLOWDOWN_START_FRACTION = 0.80; // slow back to 1x once this fraction of the known length is covered
+const double SLOWDOWN_START_FRACTION = 0.70; // slow back to 1x once this fraction of the known length is covered
 const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while watching the live readout
 const double GREEN_HUE_MAX = 160;
 const double GREEN_BRIGHTNESS_MIN = 15; // percent; lower if tape never registers, raise if false triggers
