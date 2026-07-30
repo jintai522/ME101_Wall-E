@@ -95,7 +95,7 @@ PROJECT:
 using namespace vex;
 
 // bump this string any time you want an easy way to confirm which version is loaded
-const char* CODE_VERSION = "v9-disposal-box";
+const char* CODE_VERSION = "v10-rotate-fix";
 
 const double WHEEL_C = 200; //mm
 
@@ -234,6 +234,34 @@ void rotateRobot(double targetAngle, int speed)
     }
   }
   driveMotor.stop(brake);
+
+  // motor momentum can carry the robot past the target after stop(brake) fires;
+  // settle briefly, then apply small corrective nudges with a lower power floor
+  // so it actually lands on the target instead of just reading close at the
+  // instant the main loop's speed-5 minimum told it to stop
+  wait(100, msec);
+  int correctionAttempts = 0;
+  error = targetAbsolute - BrainInertial.rotation(degrees);
+  while (fabs(error) > 0.3 and correctionAttempts < 10)
+  {
+    double correctionPower = (error > 0) ? 3 : -3;
+    if (correctionPower > 0)
+    {
+      LeftMotor.spin(forward, correctionPower, percent);
+      RightMotor.spin(reverse, correctionPower, percent);
+    }
+    else
+    {
+      LeftMotor.spin(reverse, -correctionPower, percent);
+      RightMotor.spin(forward, -correctionPower, percent);
+    }
+    wait(30, msec);
+    driveMotor.stop(brake);
+    wait(50, msec);
+    error = targetAbsolute - BrainInertial.rotation(degrees);
+    correctionAttempts++;
+  }
+
   totalHeadingDeg = normalizeAngle(totalHeadingDeg + targetAngle);
 }
 
@@ -465,9 +493,9 @@ void dumpTrash()
   wait(2, seconds);
   Scooper8.stop();
 
-  spinCompressorTo(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, forward); // push all the trash out
+  spinCompressorTo(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, reverse); // push all the trash out
   wait(1, seconds);
-  spinCompressorTo(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, reverse); // retract back
+  spinCompressorTo(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, forward); // retract back
 }
 
 void goToDisposalBox(int & run_state)
