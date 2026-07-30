@@ -490,6 +490,8 @@ void compressRobot(int speed, double maxAmp)
   MotorCompress9.spin(reverse, speed, percent);
   wait(1,seconds);
   MotorCompress9.stop(brake);
+
+  wait(3,seconds);
 }
 
 
