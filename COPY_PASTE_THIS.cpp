@@ -95,7 +95,7 @@ PROJECT:
 using namespace vex;
 
 // bump this string any time you want an easy way to confirm which version is loaded
-const char* CODE_VERSION = "v13-speed-ramp";
+const char* CODE_VERSION = "v14-slowdown-80pct";
 
 const double WHEEL_C = 200; //mm
 
@@ -112,7 +112,7 @@ const double SHIFT_DISTANCE = 250; // mm, small lateral step between rows, not a
 const int PATH_SPEED = 45; // 30 * 1.5
 const double TURN_ANGLE = 90;      // degrees; flip sign below if left/right come out reversed
 const double FAST_MULTIPLIER = 2.0; // speed multiplier once the row length is known
-const double SLOWDOWN_FRACTION = 0.10; // slow back to 1x for the last 10% of the row so it doesn't overshoot the green tape
+const double SLOWDOWN_START_FRACTION = 0.80; // slow back to 1x once this fraction of the known length is covered
 const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while watching the live readout
 const double GREEN_HUE_MAX = 160;
 const double GREEN_BRIGHTNESS_MIN = 15; // percent; lower if tape never registers, raise if false triggers
@@ -401,8 +401,8 @@ void driveUntilGreen(int speed, int & run_state)
 
   // first pass: fieldLength isn't known yet, so just drive at base speed to measure it.
   // every pass after that: drive at FAST_MULTIPLIER speed, then ease back to base speed
-  // for the last SLOWDOWN_FRACTION of the known length so it doesn't blow past the tape.
-  double slowdownStart = fieldLength * (1.0 - SLOWDOWN_FRACTION);
+  // once SLOWDOWN_START_FRACTION of the known length is covered, so it doesn't blow past the tape.
+  double slowdownStart = fieldLength * SLOWDOWN_START_FRACTION;
 
   while (!seesGreenTape() and !(scoopDetect(10,30,run_state)))
   {
