@@ -95,7 +95,7 @@ PROJECT:
 using namespace vex;
 
 // bump this string any time you want an easy way to confirm which version is loaded
-const char* CODE_VERSION = "v10-rotate-fix";
+const char* CODE_VERSION = "v11-infinite-search";
 
 const double WHEEL_C = 200; //mm
 
@@ -108,9 +108,7 @@ const double COMPRESS_DEGREE = -4000;
 const int COMPRESS_SPEED = 75;
 const double COMPRESS_CURRENT_MAX = 0.9;
 
-const double FIELD_WIDTH = 1000;   // mm, field width (direction rows shift across)
-const int NUM_ROWS = 5;            // reasonable zigzag density for the field size
-const double SHIFT_DISTANCE = FIELD_WIDTH / (NUM_ROWS - 1); // small step, not another full row
+const double SHIFT_DISTANCE = 250; // mm, small lateral step between rows, not another full row
 const int PATH_SPEED = 30;
 const double TURN_ANGLE = 90;      // degrees; flip sign below if left/right come out reversed
 const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while watching the live readout
@@ -448,23 +446,17 @@ void pathFind(int & run_state)
 {
   static int row = 0; // persists across calls so we resume where we left off after a scoop/compress
 
-  for (; row < NUM_ROWS; row++)
+  for (;; row++) // search indefinitely -- only a detected object breaks this loop
   {
     driveUntilGreen(PATH_SPEED, run_state);
     if (run_state == 2) return; // object detected mid-row; scoopermove/compress will run, then we resume this row
 
-    if (row < NUM_ROWS - 1) // no shift/turn needed after the last row
-    {
-      int turnSign = (row % 2 == 0) ? -1 : 1; // alternate direction each row transition (L-L, R-R, L-L, ...)
-      rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
-      straightDrive(SHIFT_DISTANCE, PATH_SPEED, run_state);
-      if (run_state == 2) return;
-      rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
-    }
+    int turnSign = (row % 2 == 0) ? -1 : 1; // alternate direction each row transition (L-L, R-R, L-L, ...)
+    rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
+    straightDrive(SHIFT_DISTANCE, PATH_SPEED, run_state);
+    if (run_state == 2) return;
+    rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
   }
-
-  row = 0; // reset in case pathFind is ever run again
-  run_state = 0; // covered every row with no more objects found
 }
 
 void spinCompressorTo(double degree, int speed, double current_max, directionType dir)
