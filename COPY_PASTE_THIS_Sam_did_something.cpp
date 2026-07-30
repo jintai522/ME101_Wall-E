@@ -422,7 +422,7 @@ void returning(int speed, int & run_state, bool & facingRight, double & search_w
   {
     turnSign = -1;
   }
-  straightDrive(-140, 30); // first backs up a bit 
+  straightDrive(-200, 30); // first backs up a bit 
 
   rotateRobot(90 * turnSign, 18);
 
@@ -432,7 +432,7 @@ void returning(int speed, int & run_state, bool & facingRight, double & search_w
 
   endwidth = (fabs(LeftMotor.position(turns) * WHEEL_C) + fabs(RightMotor.position(turns) * WHEEL_C)) / 2.0; 
 
-  straightDrive(200, speed); // get pass the green line 
+  straightDrive(267, speed); // get pass the green line 
 
   rotateRobot(90, 18); 
 
@@ -450,10 +450,10 @@ void returning(int speed, int & run_state, bool & facingRight, double & search_w
 
 void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
 {
-  Scooper8.spin(reverse,47,percent);
-  wait(1, seconds);
-  Scooper8.stop();// put down scooper
-  moveDoor(15 ,forward );//close door
+  Scooper8.spin(forward,30,percent);
+  wait(1.2, seconds);
+  Scooper8.stop();
+  moveDoor(15 ,reverse );//close door
 
   MotorCompress9.resetPosition();
 
@@ -465,8 +465,8 @@ void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
   //this ampere was determined based on trial test and also helps verify design specific..
   {
     double currentAmp = MotorCompress9.current(amp);
-
     double currentTime = Brain.timer(seconds);
+
     Brain.Screen.setCursor(2,1);
     Brain.Screen.print("%6.2f  A:%.2f  R:%.2f  Piston:%.2f\n",
     currentTime, currentAmp);
@@ -489,16 +489,11 @@ void compressRobot(int speed, double maxAmp, double & wall_dist_temp)
   Brain.Screen.print("Max: %.2f A", maxCurrent);
 
   MotorCompress9.spin(reverse, speed, percent);
-  wait(2,seconds);
+  wait(2.5,seconds);
   MotorCompress9.stop(brake);
 }
 
-void returnStart(int & run_state)
-{
-  run_state = 0; 
-}
-
-void returnsearch(double & search_width, double & search_length, bool & facingRight, int & run_state)
+void returnSearch(double & search_width, double & search_length, bool & facingRight, int & run_state)
 {
   int turnSign = 0;
   if (facingRight)
@@ -517,11 +512,21 @@ void returnsearch(double & search_width, double & search_length, bool & facingRi
   run_state = 1;
 }
 
+void returnStart(int & run_state)
+{
+  rotateRobot(90,18);
+  straightDrive(400,25);
+  rotateRobot(90,18);
+  straightDrive(-150,25);
+
+  run_state = 0; 
+}
+
 void end_or_search (double & search_width, double & search_length, bool & facingRight,int & scoop_count, int & run_state)
 {
  if (scoop_count > 6)
   {
-    returnsearch(search_width,search_length,facingRight,run_state);
+    returnSearch(search_width,search_length,facingRight,run_state);
   } 
   else 
   {
