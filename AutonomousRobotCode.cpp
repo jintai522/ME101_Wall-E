@@ -99,7 +99,17 @@ using namespace vex;
 // (adopted from Jintai's current-sensing compress) instead of a fixed degree target;
 // goToDisposalBox() now uses a fixed turn/tape-crossing maneuver (adopted from Jintai's
 // returning() idea) instead of odometry-vector navigation.
-const char* CODE_VERSION = "v18-current-compress-fixed-return";
+// v19: driveUntilGreen() now also checks for blue tape mid-search (seesBlueTape(),
+// adopted from Jintai's BLUE_HUE_MIN/MAX) via disposalSignalDetect() -- seeing blue sets
+// run_state = 4 to head back, same as finishing a compress. The disposal zone itself
+// is still marked by red tape (driveUntilRed/seesRedTape, unchanged).
+// v20: SLOWDOWN_START_FRACTION dropped from 0.80 to 0.70 -- eases back to 1x speed
+// earlier in the row so there's more room to settle before the green tape.
+// v21: compress()'s push-inward step was spinning past where the extend step started
+// because spinCompressorUntilCurrent() had no degree cap -- now uses spinCompressorTo()
+// again (degree AND current threshold) so it retracts/pushes the same |degree| (4000)
+// as the extend step, not an unbounded spin waiting for a current spike.
+const char* CODE_VERSION = "v21-compress-degree-cap";
 
 const double WHEEL_C = 200; //mm
 
@@ -121,13 +131,16 @@ const double SCOOP_DETECT_MAX = 60;  // mm; 150 was catching the ground since th
 const int STOP_RAMP_STEP = 10;    // percent power dropped per ramp step when easing to a stop
 const int STOP_RAMP_DELAY = 30;   // msec between ramp steps
 const double FAST_MULTIPLIER = 2.0; // speed multiplier once the row length is known
-const double SLOWDOWN_START_FRACTION = 0.80; // slow back to 1x once this fraction of the known length is covered
+const double SLOWDOWN_START_FRACTION = 0.70; // slow back to 1x once this fraction of the known length is covered
 const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while watching the live readout
 const double GREEN_HUE_MAX = 160;
 const double GREEN_BRIGHTNESS_MIN = 15; // percent; lower if tape never registers, raise if false triggers
 const double RED_HUE_MIN = 340;      // degrees; red wraps around 0, so this is a two-sided range (>=340 or <=20)
 const double RED_HUE_MAX = 20;
 const double RED_BRIGHTNESS_MIN = 15; // percent; tune the same way as GREEN_BRIGHTNESS_MIN
+const double BLUE_HUE_MIN = 190;     // degrees; the blue return-signal tape (Jintai's idea)
+const double BLUE_HUE_MAX = 359;
+const double BLUE_BRIGHTNESS_MIN = 15; // percent; tune the same way as GREEN_BRIGHTNESS_MIN
 const double CLEAR_DISTANCE = 150; // mm, blind drive after compressing so the sensor clears the spot
 const int STATUS_REFRESH_INTERVAL = 10; // loop iterations between screen redraws
 
@@ -442,6 +455,34 @@ bool seesRedTape()
   return isRed;
 }
 
+bool seesBlueTape()
+  // a signal encountered while searching -- seeing it means "head back to the
+  // disposal zone now," adopted from Jintai's seesColor(BLUE_HUE_MIN, BLUE_HUE_MAX, ...)
+  // check inside his driveUntilGreen(). Red (seesRedTape) is what actually marks the
+  // dump zone itself -- blue is just the trigger to go look for it.
+{
+  double hue = Optical11.hue();
+  double brightness = Optical11.brightness();
+  bool isBlue = (hue >= BLUE_HUE_MIN and hue <= BLUE_HUE_MAX) and brightness > BLUE_BRIGHTNESS_MIN;
+
+  showSensorReadout(hue, brightness, Optical11.color());
+  if (isBlue) showStatusLine1("Blue Tape Detected");
+
+  return isBlue;
+}
+
+bool disposalSignalDetect(int & run_state)
+  // checked during searching -- if blue tape is seen, stop searching and head to the
+  // disposal zone (goToDisposalBox will navigate to the red tape from there)
+{
+  if (seesBlueTape())
+  {
+    run_state = 4;
+    return true;
+  }
+  return false;
+}
+
 void driveUntilGreen(int speed, int & run_state)
 {
   LeftMotor.resetPosition();
@@ -453,7 +494,7 @@ void driveUntilGreen(int speed, int & run_state)
   double slowdownStart = fieldLength * SLOWDOWN_START_FRACTION;
   int stepSpeed = speed;
 
-  while (!seesGreenTape() and !(scoopDetect(SCOOP_DETECT_MIN,SCOOP_DETECT_MAX,run_state)))
+  while (!seesGreenTape() and !(scoopDetect(SCOOP_DETECT_MIN,SCOOP_DETECT_MAX,run_state)) and !(disposalSignalDetect(run_state)))
   {
     stepSpeed = speed;
     if (fieldLengthKnown and traveledDistance() < slowdownStart)
