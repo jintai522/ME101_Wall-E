@@ -515,9 +515,12 @@ void returnSearch(double & search_width, double & search_length, bool & facingRi
 void returnStart(int & run_state)
 {
   rotateRobot(90,18);
-  straightDrive(400,25);
+  straightDrive(300,25);
+
   rotateRobot(90,18);
-  straightDrive(-150,25);
+
+  straightDrive(-220,25);
+  driveUntilGreen(36, run_state);
 
   run_state = 0; 
 }
