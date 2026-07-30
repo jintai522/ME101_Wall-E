@@ -324,7 +324,7 @@ void scoopRobot ( int & run_state, int & scoop_count)
   rotateRobot(angleToTurn, 18);// turn to align with first backward
   straightDrive(-400,30);
 
-  if (scoop_count > 9)
+  if (scoop_count > 8)
   {
     run_state = 4; 
   }
@@ -550,7 +550,7 @@ void returnStart(int & run_state)
 
 void end_or_search (double & search_width, double & search_length, bool & facingRight,int & scoop_count, int & run_state)
 {
- if (scoop_count > 9)
+ if (scoop_count > 8)
   {
     returnSearch(search_width,search_length,facingRight,run_state,scoop_count);
   } 
