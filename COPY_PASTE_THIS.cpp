@@ -95,7 +95,7 @@ PROJECT:
 using namespace vex;
 
 // bump this string any time you want an easy way to confirm which version is loaded
-const char* CODE_VERSION = "v11-infinite-search";
+const char* CODE_VERSION = "v12-speed-1.5x";
 
 const double WHEEL_C = 200; //mm
 
@@ -109,7 +109,7 @@ const int COMPRESS_SPEED = 75;
 const double COMPRESS_CURRENT_MAX = 0.9;
 
 const double SHIFT_DISTANCE = 250; // mm, small lateral step between rows, not another full row
-const int PATH_SPEED = 30;
+const int PATH_SPEED = 45; // 30 * 1.5
 const double TURN_ANGLE = 90;      // degrees; flip sign below if left/right come out reversed
 const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while watching the live readout
 const double GREEN_HUE_MAX = 160;
