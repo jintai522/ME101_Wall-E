@@ -109,14 +109,107 @@ using namespace vex;
 // because spinCompressorUntilCurrent() had no degree cap -- now uses spinCompressorTo()
 // again (degree AND current threshold) so it retracts/pushes the same |degree| (4000)
 // as the extend step, not an unbounded spin waiting for a current spike.
-const char* CODE_VERSION = "v21-compress-degree-cap";
+// v22: full debug pass. Fixed pathFind()/goToDisposalBox() double-turning the heading
+// when an object interrupts them mid-maneuver and they get resumed (a static guard now
+// prevents the turn from re-running). Removed dead odometry code (posX/posY/trackMove/PI)
+// left over from the goToDisposalBox rewrite -- it ran trig on every finishDrive() call
+// for values nothing read anymore.
+// v23: adopted Jintai's loop-back-to-search idea. goToDisposalBox() now calls
+// returnToSearch() after dumpTrash() instead of ending the program (run_state = 0 is no
+// longer reachable) -- it retraces the trip to the box in reverse using distances
+// measured on the way there (lastCrossDistance/lastEdgeDistance) and resumes pathFind().
+// v24: swapped in Jintai's scoopRobot strategy for scoopermove() -- distance-based legs
+// instead of timed ones, a fast burst then an encoder-limited creep into the object,
+// and a heading restore before reversing out (via new realignToIntendedHeading()).
+// Compression is untouched and keeps this file's direction convention: MotorCompress9
+// declared un-reversed, extend on `reverse`, push inward on `forward`. Jintai's file flips
+// the motor declaration and so runs those the opposite way -- do not mix the two.
+// driveForDuration() removed (scoopermove was its only caller).
+// v25: BLUE_HUE_MAX 359 -> 260. It overlapped RED_HUE_MIN (340), so the red disposal
+// tape satisfied seesBlueTape() as well as seesRedTape(). driveUntilRed() was fine (it
+// only checks red), but disposalSignalDetect() runs on every step of the search loop,
+// so passing near the red tape while searching falsely fired the go-home trigger.
+// Also corrected the attribution in these comments: the teammate's code referred to
+// throughout (COPY_PASTE_THIS_Sam_did_something.cpp, despite the filename) is Jintai's.
+// v26: TEST BUILD -- compressor motion commented out inside spinCompressorTo() so the
+// drive sequence (pathFind, scoop, goToDisposalBox, returnToSearch) can be watched on
+// its own. Scooper, drivetrain, state machine and all timing are unchanged. NOT for a
+// real run: nothing gets compressed or ejected, so the robot never actually empties.
+// v27: TEST BUILD, continued. Scooper motion also disabled (new moveScooperTest(),
+// used by scoopermove()'s lower/raise and dumpTrash()'s lower) -- it now never
+// actually drops or lifts, only the drivetrain moves. This is drivetrain-only now:
+// nothing in the whole cycle actuates except wheels.
+// Also swapped the disposal-zone detection to Jintai's approach: goToDisposalBox()'s
+// final leg now stops on a SECOND green tape instead of a dedicated red one --
+// seesRedTape()/driveUntilRed()/RED_HUE_MIN/MAX/RED_BRIGHTNESS_MIN removed, since
+// nothing else in the file used them.
+// v28: driveUntilGreen() gained an allowFastRamp parameter. SLOWDOWN_START_FRACTION
+// is a fraction of a full ROW's length, so on goToDisposalBox()'s shorter return-trip
+// legs the robot never covered enough distance to trigger the ease-back before hitting
+// the tape -- it stayed at FAST_MULTIPLIER (2x) the whole leg. Both return-trip calls
+// now pass false and drive at normal PATH_SPEED; pathFind()'s row search passes true.
+// v29: TEST BUILD, continued. Reworked the whole return trip. After compressing, the
+// robot no longer continues forward in its approach heading (removed compress()'s
+// clear-drive) -- it immediately turns toward the start column (same direction it
+// already searched, away from any unscooped trash still ahead), drives a forced
+// minimum SHIFT_DISTANCE, then drives until hitting the start-column edge. Red
+// re-introduced (seesRedTape/RED_HUE_MIN/MAX/RED_BRIGHTNESS_MIN) to mark the actual
+// dump-zone segment on that edge -- if the first contact is red, dump immediately and
+// set hasSeenRed; if green, turn along the edge (right if hasSeenRed, left otherwise)
+// and search it for red. New driveToStartEdge(); goToDisposalBox() now phase-tracked
+// (0/1/2) so an object interruption mid-leg resumes correctly, matching the pattern
+// already used elsewhere for this. returnToSearch() rewritten to retrace whichever
+// legs this trip actually used, via new lastShiftEdgeDistance/lastAlongEdgeDistance/
+// lastSearchTurnSign (replacing lastCrossDistance/lastEdgeDistance from v18).
+// v30: TEST BUILD, continued. v29's return trip assumed the dump zone was on the
+// same edge as the "turn toward already-covered ground" safety turn -- it wasn't;
+// the dump zone is a fixed NE-corner spot (where the E wall meets the N wall, N =
+// totalHeadingDeg 0). Replaced with a fixed absolute-heading trip: always face E
+// (new rotateToAbsoluteHeading()) and drive to the E wall, then always face N and
+// drive until red is found in the corner, then dump. No conditional turn direction
+// or hasSeenRed memory needed anymore -- the destination is fixed, so the route is
+// fixed too. Removed driveToStartEdge()/hasSeenRed/lastSearchTurnSign/
+// lastShiftEdgeDistance/lastAlongEdgeDistance (v29, all wrong-wall). New
+// preReturnHeading (captured in compress()) lets returnToSearch() restore whatever
+// heading pathFind left off at, rather than reversing each turn individually.
+// v31: TEST BUILD, continued. Red only runs along the N wall, not the E wall -- the E
+// leg in goToDisposalBox() no longer checks for red (it physically can't be there),
+// removing the "caught the corner early" early-dump branch that assumed otherwise.
+// v32: TEST BUILD, continued. driveUntilGreen() -- used by pathFind()'s normal row
+// search -- only ever checked seesGreenTape(), so a row ending on red (very possible
+// starting near the NE corner, since red sits right there on the N wall) would never
+// satisfy the loop condition and the robot would just keep driving into the wall.
+// New seesBoundaryTape() (green OR red) is what the search loop checks now; red only
+// means "the dump zone" once goToDisposalBox() is deliberately looking for it after a
+// scoop -- during ordinary searching it's treated exactly like any other green crossing.
+// v33: TEST BUILD, continued. returnToSearch()'s E-leg no longer reverses -- it now
+// turns to face W (from wherever the N-leg reverse left it, still facing N) and
+// drives forward the rest of the way back toward the row, instead of continuing to
+// back up the whole trip. The N-leg (backing straight out of the dump zone, still
+// facing N) is unchanged.
+const char* CODE_VERSION = "v33-TEST-eleg-faces-travel-direction";
 
 const double WHEEL_C = 200; //mm
 
 const double ROTATE_KP = 1.8;
 const double STRAIGHT_KP = 2;
 
-const double SCOOPSPEED = 10;
+const double SCOOPSPEED = 10; // scooper speed for dumpTrash (the scoop routine has its own below)
+
+// scoop routine, adopted from Jintai's scoopRobot: distance-based moves instead of
+// timed ones, a short fast burst into the object rather than three timed stages,
+// and a heading restore afterwards
+const double SCOOP_BACKUP_DISTANCE = 250;   // mm to reverse before dropping the scooper
+const double SCOOP_APPROACH_DISTANCE = 400; // mm to cover driving into the object
+const double SCOOP_BURST_SECONDS = 1.5;     // seconds of full-speed approach before easing off
+const int SCOOP_BURST_SPEED = 90;           // percent for that burst
+const int SCOOP_CREEP_SPEED = 45;           // percent for the rest of the approach
+const double SCOOP_BACKOUT_DISTANCE = 400;  // mm to reverse back out once the scooper is up
+const int SCOOP_DRIVE_SPEED = 30;           // percent for the backup and backout legs
+const int SCOOP_LOWER_SPEED = 30;           // percent, scooper down
+const double SCOOP_LOWER_SECONDS = 1.2;
+const int SCOOP_RAISE_SPEED = 47;           // percent, scooper up
+const double SCOOP_RAISE_SECONDS = 1;
 
 const double COMPRESS_DEGREE = -4000;
 const int COMPRESS_SPEED = 75;
@@ -136,33 +229,39 @@ const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while w
 const double GREEN_HUE_MAX = 160;
 const double GREEN_BRIGHTNESS_MIN = 15; // percent; lower if tape never registers, raise if false triggers
 const double RED_HUE_MIN = 340;      // degrees; red wraps around 0, so this is a two-sided range (>=340 or <=20)
-const double RED_HUE_MAX = 20;
+const double RED_HUE_MAX = 20;       // marks the dump-zone segment on the start-column edge (see goToDisposalBox)
 const double RED_BRIGHTNESS_MIN = 15; // percent; tune the same way as GREEN_BRIGHTNESS_MIN
 const double BLUE_HUE_MIN = 190;     // degrees; the blue return-signal tape (Jintai's idea)
-const double BLUE_HUE_MAX = 359;
+const double BLUE_HUE_MAX = 260;     // kept below RED_HUE_MIN (340) so red can't satisfy seesBlueTape() --
+                                     // real blue sits around 210-250, so this still has margin
 const double BLUE_BRIGHTNESS_MIN = 15; // percent; tune the same way as GREEN_BRIGHTNESS_MIN
-const double CLEAR_DISTANCE = 150; // mm, blind drive after compressing so the sensor clears the spot
 const int STATUS_REFRESH_INTERVAL = 10; // loop iterations between screen redraws
 
 motor_group driveMotor(LeftMotor,RightMotor);
 
-const double PI = 3.14159265358979;
-
-// dead-reckoning odometry, relative to the robot's starting point/heading
+// heading reference, relative to the robot's starting orientation (never reset mid-run)
 double totalHeadingDeg = 0;
-double posX = 0; // mm
-double posY = 0; // mm
 
 // the field's length varies box to box, so this is measured the first time a
 // row is driven cleanly end-to-end (green tape to green tape), not hardcoded
 double fieldLength = 0;
 bool fieldLengthKnown = false;
 
-void trackMove(double distanceTraveled)
-{
-  posX += distanceTraveled * sin(totalHeadingDeg * PI / 180.0);
-  posY += distanceTraveled * cos(totalHeadingDeg * PI / 180.0);
-}
+int lastTurnSign = -1; // direction of the most recent pathFind row-shift turn (pathFind's own bookkeeping;
+                        // goToDisposalBox no longer needs this -- its return heading is now fixed, not relative)
+
+// the field is a rectangular green border with a red segment (the dump zone) in the
+// NE corner, where the E wall meets the N wall (N = totalHeadingDeg 0, i.e. row 0's
+// original heading). The return trip is a fixed heading sequence -- always face E,
+// then always face N -- since the dump zone's location is fixed and known in advance.
+double preReturnHeading = 0; // totalHeadingDeg captured right when compress() finishes, before any
+                              // return-trip turning -- restored at the end of returnToSearch() so pathFind
+                              // resumes at whatever heading it left off at, whether that was mid-row or mid-shift
+
+// distances measured during the most recent trip to the disposal box, so
+// returnToSearch() can retrace the same trip in reverse instead of needing real odometry
+double lastEastLegDistance = 0;  // facing E: from the compress spot to the E wall
+double lastNorthLegDistance = 0; // facing N: from the E wall to the red dump zone in the NE corner
 
 double normalizeAngle(double angle)
 {
@@ -194,20 +293,6 @@ void driveStep(double speed)
   RightMotor.spin((rightPower >= 0) ? forward : reverse, fabs(rightPower), percent);
 }
 
-void driveForDuration(double seconds, double speed)
-  // heading-corrected driving for a fixed duration (not a fixed distance) --
-  // used by scoopermove so the scoop-approach stays aligned instead of
-  // drifting off heading like the old raw equal-percentage commands did
-{
-  int steps = (int)(seconds * 1000 / STOP_RAMP_DELAY);
-  for (int i = 0; i < steps; i++)
-  {
-    driveStep(speed);
-    wait(STOP_RAMP_DELAY, msec);
-  }
-  driveMotor.stop(brake);
-}
-
 void finishDrive(double fromSpeed)
   // eases to a stop instead of slamming the brake -- an abrupt full-brake
   // stop (especially from the faster 2x search speed) was what caused the
@@ -221,7 +306,6 @@ void finishDrive(double fromSpeed)
     wait(STOP_RAMP_DELAY, msec);
   }
   driveMotor.stop(brake);
-  trackMove(traveledDistance());
 }
 
 void configureAllSensors()
@@ -323,6 +407,18 @@ void rotateRobot(double targetAngle, int speed)
   totalHeadingDeg = totalHeadingDeg + targetAngle;
 }
 
+void rotateToAbsoluteHeading(double targetHeading, int speed)
+  // turns to a fixed heading (0 = N, 90 = E, ...) relative to totalHeadingDeg's own
+  // zero, rather than a relative angle from wherever the robot currently is. Used by
+  // goToDisposalBox()'s fixed E-then-N return trip: since the target heading doesn't
+  // depend on which direction the robot happened to be facing when it stopped to
+  // scoop, calling this again after an interruption just does a near-zero correction
+  // instead of turning again -- no separate "already turned" guard needed.
+{
+  double delta = normalizeAngle(targetHeading - totalHeadingDeg);
+  rotateRobot(delta, speed);
+}
+
 void snapHeadingToGrid()
   // re-anchors heading drift against the tape itself: corrects to the nearest
   // 90-degree multiple, since the field's rows are expected to run exactly
@@ -336,6 +432,21 @@ void snapHeadingToGrid()
   {
     rotateRobot(correction, PATH_SPEED);
   }
+}
+
+void realignToIntendedHeading(int speed)
+  // pulls the robot back onto totalHeadingDeg after a manoeuvre that knocked it
+  // off, adopted from Jintai's capture-heading-then-restore trick in scoopRobot.
+  //
+  // totalHeadingDeg must NOT move here -- this is undoing drift, not commanding a
+  // turn, and the intended heading hasn't changed. rotateRobot() always adds its
+  // angle to totalHeadingDeg (it assumes a deliberate turn), so that gets undone.
+{
+  double drift = normalizeAngle(totalHeadingDeg - BrainInertial.rotation(degrees));
+  if (fabs(drift) < 0.5) return;
+
+  rotateRobot(drift, speed);
+  totalHeadingDeg -= drift;
 }
 
 void showStatusLine1(const char* text)
@@ -376,31 +487,66 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
-void scoopermove (double scooperSpeed, int & run_state)
-  //go back a bit
-  //bring down scooper
-  //go foward
-  //bring up scooper
-  // every drivetrain move below is heading-corrected (driveForDuration), so a
-  // misaligned approach doesn't get worse during the scoop and cause a miss
+void moveScooperTest(directionType dir, int speed, double durationSeconds)
+  // ***** SCOOPER DISABLED -- MOVEMENT-ONLY TEST BUILD *****
+  // spin/stop commented out so the scooper never actually raises or lowers while
+  // the drivetrain sequence is being watched. The wait still runs, so overall
+  // timing matches what a normal cycle would take.
+  //
+  // TO RE-ENABLE: delete the printf line, uncomment the block under it, and bump
+  // CODE_VERSION off the "TEST" name so the brain screen stops advertising this.
 {
-  driveForDuration(2.8, -15);
+  printf("SCOOPER SKIPPED (disabled) dir=%s speed=%d seconds=%.2f\n",
+         (dir == forward) ? "forward" : "reverse", speed, durationSeconds);
+  wait(durationSeconds, seconds);
 
-  wait(0.5,seconds);
-
-  Scooper8.spin(forward,scooperSpeed,percent);
-  wait(4, seconds);
+  /*
+  Scooper8.spin(dir, speed, percent);
+  wait(durationSeconds, seconds);
   Scooper8.stop();
+  */
+}
 
-  wait(0.5,seconds);
+void scoopermove (int & run_state)
+  // Jintai's scoopRobot strategy: back off a measured distance, drop the scooper,
+  // charge in with a short full-speed burst then ease the rest of the way on
+  // encoder distance, lift, straighten up, and reverse back out.
+  //
+  // Distance-based rather than timed, so a low battery or a heavy load changes
+  // how long it takes but not how far it goes -- the old timed version quietly
+  // travelled a different distance every run.
+  //
+  // The drive legs use driveStep so they stay heading-corrected (this file's
+  // convention), which Jintai's raw driveMotor.spin calls don't do.
+{
+  driveBlind(SCOOP_BACKUP_DISTANCE, -SCOOP_DRIVE_SPEED);
+  wait(0.5, seconds);
 
-  driveForDuration(1, 100);
-  driveForDuration(0.5, 67);
-  driveForDuration(0.5, 23);
+  moveScooperTest(forward, SCOOP_LOWER_SPEED, SCOOP_LOWER_SECONDS);
 
-  Scooper8.spin(reverse,47,percent);
-  wait(1, seconds);
-  Scooper8.stop();
+  wait(0.5, seconds);
+
+  LeftMotor.resetPosition();
+  RightMotor.resetPosition();
+
+  // full-speed burst to get the scooper under the object, distance-capped so a
+  // fast run can't blow straight past the target (Jintai's is purely timed)
+  double burstEnd = Brain.timer(seconds) + SCOOP_BURST_SECONDS;
+  while (Brain.timer(seconds) < burstEnd and traveledDistance() < SCOOP_APPROACH_DISTANCE)
+  {
+    driveStep(SCOOP_BURST_SPEED);
+  }
+  while (traveledDistance() < SCOOP_APPROACH_DISTANCE)
+  {
+    driveStep(SCOOP_CREEP_SPEED);
+  }
+  finishDrive(SCOOP_CREEP_SPEED);
+
+  moveScooperTest(reverse, SCOOP_RAISE_SPEED, SCOOP_RAISE_SECONDS);
+
+  // the scoop shoves the robot around, so straighten up before reversing out
+  realignToIntendedHeading(PATH_SPEED);
+  driveBlind(SCOOP_BACKOUT_DISTANCE, -SCOOP_DRIVE_SPEED);
 
   run_state = 3;
 }
@@ -444,6 +590,7 @@ bool seesGreenTape()
 }
 
 bool seesRedTape()
+  // marks the dump-zone segment on the start-column edge -- see goToDisposalBox()
 {
   double hue = Optical11.hue();
   double brightness = Optical11.brightness();
@@ -453,6 +600,15 @@ bool seesRedTape()
   if (isRed) showStatusLine1("Red Tape Detected");
 
   return isRed;
+}
+
+bool seesBoundaryTape()
+  // true on green almost everywhere, OR red where a row happens to end on the
+  // dump-zone segment of the N wall. During normal searching (not yet carrying
+  // anything to dump), red means nothing special here -- it's just where this
+  // particular row's boundary happens to be, same as any other crossing.
+{
+  return seesGreenTape() or seesRedTape();
 }
 
 bool seesBlueTape()
@@ -483,7 +639,18 @@ bool disposalSignalDetect(int & run_state)
   return false;
 }
 
-void driveUntilGreen(int speed, int & run_state)
+void driveUntilGreen(int speed, int & run_state, bool allowFastRamp)
+  // despite the name, stops on green OR red (seesBoundaryTape) -- red only means
+  // "the dump zone" once something's actually been scooped and goToDisposalBox() is
+  // deliberately looking for it; during ordinary searching it's just where this row's
+  // boundary happens to be, and is treated exactly like green (see seesBoundaryTape).
+  //
+  // allowFastRamp gates the 2x speed-up below. It only makes sense while pathFind()
+  // is searching full rows -- SLOWDOWN_START_FRACTION is a fraction of a whole row's
+  // length, so on the shorter return-trip legs in goToDisposalBox() the robot never
+  // travels far enough to trigger the ease-back before hitting the tape, and stays
+  // at 2x the entire leg. Callers on the return trip pass false to just drive at
+  // normal speed instead.
 {
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
@@ -494,10 +661,10 @@ void driveUntilGreen(int speed, int & run_state)
   double slowdownStart = fieldLength * SLOWDOWN_START_FRACTION;
   int stepSpeed = speed;
 
-  while (!seesGreenTape() and !(scoopDetect(SCOOP_DETECT_MIN,SCOOP_DETECT_MAX,run_state)) and !(disposalSignalDetect(run_state)))
+  while (!seesBoundaryTape() and !(scoopDetect(SCOOP_DETECT_MIN,SCOOP_DETECT_MAX,run_state)) and !(disposalSignalDetect(run_state)))
   {
     stepSpeed = speed;
-    if (fieldLengthKnown and traveledDistance() < slowdownStart)
+    if (allowFastRamp and fieldLengthKnown and traveledDistance() < slowdownStart)
     {
       stepSpeed = speed * FAST_MULTIPLIER;
     }
@@ -506,7 +673,7 @@ void driveUntilGreen(int speed, int & run_state)
   double distance = traveledDistance();
   finishDrive(stepSpeed);
 
-  if (run_state != 2) // stopped because of tape, not an object -- a real tape crossing
+  if (run_state != 2 and run_state != 4) // stopped because of green tape specifically, not an object or the blue return-signal
   {
     snapHeadingToGrid();
 
@@ -519,18 +686,6 @@ void driveUntilGreen(int speed, int & run_state)
       fieldLengthKnown = true;
     }
   }
-}
-
-void driveUntilRed(int speed)
-{
-  LeftMotor.resetPosition();
-  RightMotor.resetPosition();
-
-  while (!seesRedTape())
-  {
-    driveStep(speed);
-  }
-  finishDrive(speed);
 }
 
 void driveBlind(double distance, int speed)
@@ -550,27 +705,50 @@ void driveBlind(double distance, int speed)
 void pathFind(int & run_state)
 {
   static int row = 0; // persists across calls so we resume where we left off after a scoop/compress
+  static bool turnedForShift = false; // true once this row's first turn has run, so resuming after an
+                                       // object interrupts the shift drive doesn't repeat that turn
 
   for (;; row++) // search indefinitely -- only a detected object breaks this loop
   {
-    driveUntilGreen(PATH_SPEED, run_state);
-    if (run_state == 2) return; // object detected mid-row; scoopermove/compress will run, then we resume this row
+    if (!turnedForShift)
+    {
+      driveUntilGreen(PATH_SPEED, run_state, true); // searching a full row -- fast ramp applies
+      if (run_state == 2) return; // object detected mid-row; scoopermove/compress will run, then we resume this row
+      if (run_state == 4) return; // blue return-signal seen; goToDisposalBox will head to the red disposal tape
 
-    int turnSign = (row % 2 == 0) ? -1 : 1; // alternate direction each row transition (L-L, R-R, L-L, ...)
-    rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
+      lastTurnSign = (row % 2 == 0) ? -1 : 1; // alternate direction each row transition (L-L, R-R, L-L, ...)
+      rotateRobot(lastTurnSign * TURN_ANGLE, PATH_SPEED);
+      turnedForShift = true;
+    }
+
     straightDrive(SHIFT_DISTANCE, PATH_SPEED, run_state);
-    if (run_state == 2) return;
-    rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
+    if (run_state == 2) return; // object detected mid-shift; resumes here next time, skipping the turn above
+
+    rotateRobot(lastTurnSign * TURN_ANGLE, PATH_SPEED);
+    turnedForShift = false;
   }
 }
 
 void spinCompressorTo(double degree, int speed, double current_max, directionType dir)
+  // ***** COMPRESSOR DISABLED -- MOVEMENT-ONLY TEST BUILD *****
+  // The motor commands below are commented out so the robot can be watched doing
+  // pathfinding, scooping and the return-to-disposal run without the compressor
+  // actuating. Every caller, wait and drive leg is untouched, so the sequence and
+  // its timing are unchanged -- only the compressor stays still.
+  //
+  // TO RE-ENABLE: delete the printf line, uncomment the block under it, and bump
+  // CODE_VERSION off the "TEST" name so the brain screen stops advertising this.
 {
+  printf("COMPRESSOR SKIPPED (disabled) dir=%s degree=%.0f speed=%d maxAmp=%.2f\n",
+         (dir == forward) ? "forward" : "reverse", degree, speed, current_max);
+
+  /*
   MotorCompress9.resetPosition();
   MotorCompress9.spin(dir, speed, percent);
   while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
   {}
   MotorCompress9.stop(brake);
+  */
 }
 
 void compress(double degree, int speed, double current_max, int & run_state)
@@ -582,42 +760,89 @@ void compress(double degree, int speed, double current_max, int & run_state)
   wait(1, seconds);
   spinCompressorTo(degree, speed, COMPRESS_PUSH_CURRENT_THRESHOLD, forward); // push inward, capped at the same |degree|
 
-  driveBlind(CLEAR_DISTANCE, PATH_SPEED); // move past the compacted spot so it doesn't immediately re-trigger scoopDetect
+  preReturnHeading = totalHeadingDeg; // capture before any return-trip turning begins,
+                                       // so returnToSearch() can restore it later
 
   run_state = 4; // head to the disposal box
 }
 
 void dumpTrash()
 {
-  Scooper8.spin(forward, SCOOPSPEED, percent); // bring the scooper down
-  wait(2, seconds);
-  Scooper8.stop();
+  moveScooperTest(forward, SCOOPSPEED, 2); // bring the scooper down
 
   spinCompressorTo(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, reverse); // push all the trash out
   wait(1, seconds);
   spinCompressorTo(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, forward); // retract back
 }
 
-void goToDisposalBox(int & run_state)
-  // fixed-maneuver return (adopted from Jintai's returning() idea) instead of the
-  // odometry-vector approach: turn back toward the start column, cross the nearest
-  // row-boundary green tape, turn again, then drive along that edge until the red
-  // disposal tape is found. No posX/posY/fieldLength math needed here -- compress()
-  // already drove past the compacted spot, so no extra backup step is needed either.
+void returnToSearch(int & run_state)
+  // retraces goToDisposalBox()'s fixed E-then-N trip, then restores whatever heading
+  // pathFind left the robot at before this trip began (preReturnHeading) -- simpler
+  // and more robust than reversing each turn individually, since it works regardless
+  // of whether the robot was heading N, S, or mid-shift when it stopped to scoop.
+  //
+  // The two legs deliberately use different mechanics: the N-leg backs straight out
+  // of the dump zone (drives in reverse, still facing N, no turn) since that's the
+  // quickest way off the tape it just dumped on. The E-leg instead turns to face W
+  // first and drives forward the rest of the way, rather than continuing to reverse
+  // -- facing the actual direction of travel for the longer leg back toward the row.
 {
-  int turnSign = -1; // toward the start column -- lastTurnSign bookkeeping arrives next version
+  driveBlind(lastNorthLegDistance, -PATH_SPEED); // back south, away from red -- still facing N
 
-  rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
+  rotateToAbsoluteHeading(-90, PATH_SPEED); // turn to face W, the direction of travel for this leg
+  driveBlind(lastEastLegDistance, PATH_SPEED); // drive forward, back toward the row
 
-  driveUntilGreen(PATH_SPEED, run_state); // reach the row-boundary tape
-  driveBlind(SHIFT_DISTANCE, PATH_SPEED); // cross fully over it, onto the edge column
+  rotateToAbsoluteHeading(preReturnHeading, PATH_SPEED); // restore the heading pathFind left off at
 
-  rotateRobot(TURN_ANGLE, PATH_SPEED); // face down the edge column toward the disposal marker
-  driveUntilRed(PATH_SPEED);
+  run_state = 1; // resume pathFind() -- it picks back up mid-row since turnedForShift was never set for this row
+}
 
-  dumpTrash();
+void goToDisposalBox(int & run_state)
+  // Fixed absolute-heading return: always turn to face E (regardless of which
+  // direction the robot was searching in), drive to the E wall, then turn to face N
+  // and drive until the red dump zone is found in the corner. No conditional turn
+  // direction or memory of where red was previously found needed -- the dump zone's
+  // location is fixed, so the route there is fixed too.
+{
+  static int phase = 0; // 0 = face E and drive to the E wall, 1 = face N and drive to red
 
-  run_state = 0;
+  if (phase == 0)
+  {
+    rotateToAbsoluteHeading(90, PATH_SPEED); // face E
+
+    LeftMotor.resetPosition();
+    RightMotor.resetPosition();
+
+    while (!seesGreenTape() and !(scoopDetect(SCOOP_DETECT_MIN, SCOOP_DETECT_MAX, run_state)))
+    {
+      driveStep(PATH_SPEED);
+    }
+    finishDrive(PATH_SPEED);
+    if (run_state == 2) return; // object detected; resumes this phase next time
+    lastEastLegDistance = traveledDistance();
+
+    phase = 1;
+  }
+
+  if (phase == 1)
+  {
+    rotateToAbsoluteHeading(0, PATH_SPEED); // face N
+
+    LeftMotor.resetPosition();
+    RightMotor.resetPosition();
+
+    while (!seesRedTape() and !(scoopDetect(SCOOP_DETECT_MIN, SCOOP_DETECT_MAX, run_state)))
+    {
+      driveStep(PATH_SPEED);
+    }
+    finishDrive(PATH_SPEED);
+    if (run_state == 2) return; // object detected; resumes this phase next time
+    lastNorthLegDistance = traveledDistance();
+
+    dumpTrash();
+    phase = 0;
+    returnToSearch(run_state);
+  }
 }
 
 int main()
@@ -653,7 +878,7 @@ int main()
     }
     else if (run_state == 2)
     {
-      scoopermove(SCOOPSPEED, run_state);
+      scoopermove(run_state);
     }
     else if (run_state == 3)
     {
