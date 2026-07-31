@@ -161,7 +161,18 @@ using namespace vex;
 // already used elsewhere for this. returnToSearch() rewritten to retrace whichever
 // legs this trip actually used, via new lastShiftEdgeDistance/lastAlongEdgeDistance/
 // lastSearchTurnSign (replacing lastCrossDistance/lastEdgeDistance from v18).
-const char* CODE_VERSION = "v29-TEST-start-edge-return";
+// v30: TEST BUILD, continued. v29's return trip assumed the dump zone was on the
+// same edge as the "turn toward already-covered ground" safety turn -- it wasn't;
+// the dump zone is a fixed NE-corner spot (where the E wall meets the N wall, N =
+// totalHeadingDeg 0). Replaced with a fixed absolute-heading trip: always face E
+// (new rotateToAbsoluteHeading()) and drive to the E wall, then always face N and
+// drive until red is found in the corner, then dump. No conditional turn direction
+// or hasSeenRed memory needed anymore -- the destination is fixed, so the route is
+// fixed too. Removed driveToStartEdge()/hasSeenRed/lastSearchTurnSign/
+// lastShiftEdgeDistance/lastAlongEdgeDistance (v29, all wrong-wall). New
+// preReturnHeading (captured in compress()) lets returnToSearch() restore whatever
+// heading pathFind left off at, rather than reversing each turn individually.
+const char* CODE_VERSION = "v30-TEST-fixed-NE-corner-return";
 
 const double WHEEL_C = 200; //mm
 
@@ -222,18 +233,21 @@ double fieldLength = 0;
 bool fieldLengthKnown = false;
 
 int lastTurnSign = -1; // direction of the most recent pathFind row-shift turn, needed again
-                        // for the second turn when a resumed call skips recomputing it
+                        // for the second turn when a resumed call skips recomputing it -- pathFind's
+                        // own bookkeeping now; goToDisposalBox's return heading is fixed, not relative
 
-bool hasSeenRed = false; // once true, later trips prefer turning right along the start-column
-                          // edge to search for red (learned from a previous trip); persists for the run
+// the field is a rectangular green border with a red segment (the dump zone) in the
+// NE corner, where the E wall meets the N wall (N = totalHeadingDeg 0, i.e. row 0's
+// original heading). The return trip is a fixed heading sequence -- always face E,
+// then always face N -- since the dump zone's location is fixed and known in advance.
+double preReturnHeading = 0; // totalHeadingDeg captured right when compress() finishes, before any
+                              // return-trip turning -- restored at the end of returnToSearch() so pathFind
+                              // resumes at whatever heading it left off at, whether that was mid-row or mid-shift
 
-// distances/turns used on the most recent trip to the disposal box, so returnToSearch()
-// can retrace exactly whichever legs this trip actually used, instead of needing real odometry
-int lastSearchTurnSign = -1;   // direction turned toward the start column (same as lastTurnSign at trip start)
-int lastEdgeTurnSign = 0;      // direction turned along the start-column edge, 0 if red was found
-                                // immediately and that turn never happened
-double lastShiftEdgeDistance = 0; // the forced minimum shift toward the start-column edge (driveToStartEdge)
-double lastAlongEdgeDistance = 0; // distance driven along that edge searching for red, if it wasn't immediate
+// distances measured during the most recent trip to the disposal box, so
+// returnToSearch() can retrace the same trip in reverse instead of needing real odometry
+double lastEastLegDistance = 0;  // facing E: from the compress spot to the E wall
+double lastNorthLegDistance = 0; // facing N: from the E wall to the red dump zone in the NE corner
 
 double normalizeAngle(double angle)
 {
@@ -377,6 +391,18 @@ void rotateRobot(double targetAngle, int speed)
   // therefore never wraps either -- normalizeAngle is only applied to
   // differences of this value elsewhere, never to the value itself
   totalHeadingDeg = totalHeadingDeg + targetAngle;
+}
+
+void rotateToAbsoluteHeading(double targetHeading, int speed)
+  // turns to a fixed heading (0 = N, 90 = E, ...) relative to totalHeadingDeg's own
+  // zero, rather than a relative angle from wherever the robot currently is. Used by
+  // goToDisposalBox()'s fixed E-then-N return trip: since the target heading doesn't
+  // depend on which direction the robot happened to be facing when it stopped to
+  // scoop, calling this again after an interruption just does a near-zero correction
+  // instead of turning again -- no separate "already turned" guard needed.
+{
+  double delta = normalizeAngle(targetHeading - totalHeadingDeg);
+  rotateRobot(delta, speed);
 }
 
 void snapHeadingToGrid()
@@ -706,6 +732,9 @@ void compress(double degree, int speed, double current_max, int & run_state)
   wait(1, seconds);
   spinCompressorTo(degree, speed, COMPRESS_PUSH_CURRENT_THRESHOLD, forward); // push inward, capped at the same |degree|
 
+  preReturnHeading = totalHeadingDeg; // capture before any return-trip turning begins,
+                                       // so returnToSearch() can restore it later
+
   run_state = 4; // head to the disposal box
 }
 
@@ -719,101 +748,73 @@ void dumpTrash()
 }
 
 void returnToSearch(int & run_state)
-  // retraces whichever legs this trip actually used, via lastShiftEdgeDistance/
-  // lastAlongEdgeDistance/lastSearchTurnSign, then resumes pathFind()
+  // retraces goToDisposalBox()'s fixed E-then-N trip, then restores whatever heading
+  // pathFind left the robot at before this trip began (preReturnHeading) -- simpler
+  // and more robust than reversing each turn individually, since it works regardless
+  // of whether the robot was heading N, S, or mid-shift when it stopped to scoop.
 {
-  if (lastEdgeTurnSign != 0) // skipped if red was found immediately in phase 0 -- no edge turn to undo
-  {
-    driveBlind(lastAlongEdgeDistance, -PATH_SPEED);
-    rotateRobot(-lastEdgeTurnSign * TURN_ANGLE, PATH_SPEED);
-  }
+  driveBlind(lastNorthLegDistance, -PATH_SPEED); // back south, away from red -- still facing N
 
-  driveBlind(lastShiftEdgeDistance, -PATH_SPEED);
-  rotateRobot(-lastSearchTurnSign * TURN_ANGLE, PATH_SPEED);
+  rotateToAbsoluteHeading(90, PATH_SPEED); // face E again
+  driveBlind(lastEastLegDistance, -PATH_SPEED); // back west, away from the E wall
+
+  rotateToAbsoluteHeading(preReturnHeading, PATH_SPEED); // restore the heading pathFind left off at
 
   run_state = 1; // resume pathFind() -- it picks back up mid-row since turnedForShift was never set for this row
 }
 
-void driveToStartEdge(int & run_state)
-  // turns toward the start column (same direction pathFind was already searching, away
-  // from any unscooped trash still ahead), drives a forced minimum SHIFT_DISTANCE so it
-  // clears the row it was just on, then drives until it hits the start-column edge tape
-{
-  static bool turned = false; // guards the turn so resuming after an object interrupts
-                               // the drive-to-edge leg doesn't re-turn
-
-  if (!turned)
-  {
-    lastSearchTurnSign = lastTurnSign;
-    rotateRobot(lastSearchTurnSign * TURN_ANGLE, PATH_SPEED);
-    driveBlind(SHIFT_DISTANCE, PATH_SPEED);
-    lastShiftEdgeDistance = SHIFT_DISTANCE;
-    turned = true;
-  }
-
-  LeftMotor.resetPosition();
-  RightMotor.resetPosition();
-  while (!seesGreenTape() and !seesRedTape() and !(scoopDetect(SCOOP_DETECT_MIN, SCOOP_DETECT_MAX, run_state)))
-  {
-    driveStep(PATH_SPEED);
-  }
-  finishDrive(PATH_SPEED);
-  if (run_state == 2) return; // object detected; resumes here next time, skipping the turn above
-
-  turned = false;
-}
-
 void goToDisposalBox(int & run_state)
-  // reworked return trip: after compressing, turn toward the start column (same
-  // direction just searched, away from any trash still ahead), force a minimum shift
-  // across, then search the start-column edge for the red dump-zone segment -- if the
-  // first contact there is already red, dump immediately; otherwise turn along the
-  // edge (using where red was found last time as a hint) and keep looking.
+  // Fixed absolute-heading return: always turn to face E (regardless of which
+  // direction the robot was searching in), drive to the E wall, then turn to face N
+  // and drive until the red dump zone is found in the corner. No conditional turn
+  // direction or memory of where red was previously found needed -- the dump zone's
+  // location is fixed, so the route there is fixed too.
 {
-  static int phase = 0; // 0 = drive to the start-column edge, 1 = turn and search along it for red
+  static int phase = 0; // 0 = face E and drive to the E wall, 1 = face N and drive to red
 
   if (phase == 0)
   {
-    driveToStartEdge(run_state);
-    if (run_state == 2) return;
+    rotateToAbsoluteHeading(90, PATH_SPEED); // face E
 
-    if (seesRedTape())
+    LeftMotor.resetPosition();
+    RightMotor.resetPosition();
+
+    while (!seesGreenTape() and !seesRedTape() and !(scoopDetect(SCOOP_DETECT_MIN, SCOOP_DETECT_MAX, run_state)))
     {
-      hasSeenRed = true;
-      lastEdgeTurnSign = 0; // no edge turn happened -- red was found immediately
+      driveStep(PATH_SPEED);
+    }
+    finishDrive(PATH_SPEED);
+    if (run_state == 2) return; // object detected; resumes this phase next time
+    lastEastLegDistance = traveledDistance();
+
+    if (seesRedTape()) // caught the corner early -- red found before reaching the E wall's green boundary
+    {
       dumpTrash();
       phase = 0;
       returnToSearch(run_state);
       return;
     }
+
     phase = 1;
   }
 
   if (phase == 1)
   {
-    static bool turnedAlongEdge = false;
-
-    if (!turnedAlongEdge)
-    {
-      lastEdgeTurnSign = hasSeenRed ? 1 : -1; // right if a previous trip found red this way, left otherwise
-      rotateRobot(lastEdgeTurnSign * TURN_ANGLE, PATH_SPEED);
-      turnedAlongEdge = true;
-    }
+    rotateToAbsoluteHeading(0, PATH_SPEED); // face N
 
     LeftMotor.resetPosition();
     RightMotor.resetPosition();
+
     while (!seesRedTape() and !(scoopDetect(SCOOP_DETECT_MIN, SCOOP_DETECT_MAX, run_state)))
     {
       driveStep(PATH_SPEED);
     }
     finishDrive(PATH_SPEED);
-    if (run_state == 2) return; // object detected; resumes here next time, skipping the turn above
-    lastAlongEdgeDistance = traveledDistance();
-    hasSeenRed = true;
+    if (run_state == 2) return; // object detected; resumes this phase next time
+    lastNorthLegDistance = traveledDistance();
 
     dumpTrash();
     phase = 0;
-    turnedAlongEdge = false;
     returnToSearch(run_state);
   }
 }
