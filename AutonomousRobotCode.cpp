@@ -135,7 +135,15 @@ using namespace vex;
 // drive sequence (pathFind, scoop, goToDisposalBox, returnToSearch) can be watched on
 // its own. Scooper, drivetrain, state machine and all timing are unchanged. NOT for a
 // real run: nothing gets compressed or ejected, so the robot never actually empties.
-const char* CODE_VERSION = "v26-TEST-compressor-disabled";
+// v27: TEST BUILD, continued. Scooper motion also disabled (new moveScooperTest(),
+// used by scoopermove()'s lower/raise and dumpTrash()'s lower) -- it now never
+// actually drops or lifts, only the drivetrain moves. This is drivetrain-only now:
+// nothing in the whole cycle actuates except wheels.
+// Also swapped the disposal-zone detection to Jintai's approach: goToDisposalBox()'s
+// final leg now stops on a SECOND green tape instead of a dedicated red one --
+// seesRedTape()/driveUntilRed()/RED_HUE_MIN/MAX/RED_BRIGHTNESS_MIN removed, since
+// nothing else in the file used them.
+const char* CODE_VERSION = "v27-TEST-scooper-disabled";
 
 const double WHEEL_C = 200; //mm
 
@@ -176,9 +184,6 @@ const double SLOWDOWN_START_FRACTION = 0.70; // slow back to 1x once this fracti
 const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while watching the live readout
 const double GREEN_HUE_MAX = 160;
 const double GREEN_BRIGHTNESS_MIN = 15; // percent; lower if tape never registers, raise if false triggers
-const double RED_HUE_MIN = 340;      // degrees; red wraps around 0, so this is a two-sided range (>=340 or <=20)
-const double RED_HUE_MAX = 20;
-const double RED_BRIGHTNESS_MIN = 15; // percent; tune the same way as GREEN_BRIGHTNESS_MIN
 const double BLUE_HUE_MIN = 190;     // degrees; the blue return-signal tape (Jintai's idea)
 const double BLUE_HUE_MAX = 260;     // kept below RED_HUE_MIN (340) so red can't satisfy seesBlueTape() --
                                      // real blue sits around 210-250, so this still has margin
@@ -202,7 +207,7 @@ int lastTurnSign = -1; // direction of the most recent pathFind row-shift turn, 
 // distances measured during the most recent trip to the disposal box, so
 // returnToSearch() can retrace the same trip in reverse instead of needing real odometry
 double lastCrossDistance = 0; // the row-boundary tape crossing leg (driveUntilGreen, in goToDisposalBox)
-double lastEdgeDistance = 0;  // the edge leg along to the red disposal tape (driveUntilRed)
+double lastEdgeDistance = 0;  // the edge leg along to the disposal marker (a second green tape now)
 
 double normalizeAngle(double angle)
 {
@@ -416,6 +421,26 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
+void moveScooperTest(directionType dir, int speed, double durationSeconds)
+  // ***** SCOOPER DISABLED -- MOVEMENT-ONLY TEST BUILD *****
+  // spin/stop commented out so the scooper never actually raises or lowers while
+  // the drivetrain sequence is being watched. The wait still runs, so overall
+  // timing matches what a normal cycle would take.
+  //
+  // TO RE-ENABLE: delete the printf line, uncomment the block under it, and bump
+  // CODE_VERSION off the "TEST" name so the brain screen stops advertising this.
+{
+  printf("SCOOPER SKIPPED (disabled) dir=%s speed=%d seconds=%.2f\n",
+         (dir == forward) ? "forward" : "reverse", speed, durationSeconds);
+  wait(durationSeconds, seconds);
+
+  /*
+  Scooper8.spin(dir, speed, percent);
+  wait(durationSeconds, seconds);
+  Scooper8.stop();
+  */
+}
+
 void scoopermove (int & run_state)
   // Jintai's scoopRobot strategy: back off a measured distance, drop the scooper,
   // charge in with a short full-speed burst then ease the rest of the way on
@@ -431,9 +456,7 @@ void scoopermove (int & run_state)
   driveBlind(SCOOP_BACKUP_DISTANCE, -SCOOP_DRIVE_SPEED);
   wait(0.5, seconds);
 
-  Scooper8.spin(forward, SCOOP_LOWER_SPEED, percent);
-  wait(SCOOP_LOWER_SECONDS, seconds);
-  Scooper8.stop();
+  moveScooperTest(forward, SCOOP_LOWER_SPEED, SCOOP_LOWER_SECONDS);
 
   wait(0.5, seconds);
 
@@ -453,9 +476,7 @@ void scoopermove (int & run_state)
   }
   finishDrive(SCOOP_CREEP_SPEED);
 
-  Scooper8.spin(reverse, SCOOP_RAISE_SPEED, percent);
-  wait(SCOOP_RAISE_SECONDS, seconds);
-  Scooper8.stop();
+  moveScooperTest(reverse, SCOOP_RAISE_SPEED, SCOOP_RAISE_SECONDS);
 
   // the scoop shoves the robot around, so straighten up before reversing out
   realignToIntendedHeading(PATH_SPEED);
@@ -500,18 +521,6 @@ bool seesGreenTape()
   if (isGreen) showStatusLine1("Green Tape Detected");
 
   return isGreen;
-}
-
-bool seesRedTape()
-{
-  double hue = Optical11.hue();
-  double brightness = Optical11.brightness();
-  bool isRed = (hue >= RED_HUE_MIN or hue <= RED_HUE_MAX) and brightness > RED_BRIGHTNESS_MIN;
-
-  showSensorReadout(hue, brightness, Optical11.color());
-  if (isRed) showStatusLine1("Red Tape Detected");
-
-  return isRed;
 }
 
 bool seesBlueTape()
@@ -578,18 +587,6 @@ void driveUntilGreen(int speed, int & run_state)
       fieldLengthKnown = true;
     }
   }
-}
-
-void driveUntilRed(int speed)
-{
-  LeftMotor.resetPosition();
-  RightMotor.resetPosition();
-
-  while (!seesRedTape())
-  {
-    driveStep(speed);
-  }
-  finishDrive(speed);
 }
 
 void driveBlind(double distance, int speed)
@@ -671,9 +668,7 @@ void compress(double degree, int speed, double current_max, int & run_state)
 
 void dumpTrash()
 {
-  Scooper8.spin(forward, SCOOPSPEED, percent); // bring the scooper down
-  wait(2, seconds);
-  Scooper8.stop();
+  moveScooperTest(forward, SCOOPSPEED, 2); // bring the scooper down
 
   spinCompressorTo(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, reverse); // push all the trash out
   wait(1, seconds);
@@ -715,7 +710,8 @@ void goToDisposalBox(int & run_state)
 
   driveBlind(SHIFT_DISTANCE, PATH_SPEED); // cross fully over it, onto the edge column
   rotateRobot(TURN_ANGLE, PATH_SPEED); // face down the edge column toward the disposal marker
-  driveUntilRed(PATH_SPEED);
+  driveUntilGreen(PATH_SPEED, run_state); // disposal marker is a second green tape now, not red
+  if (run_state == 2) return; // object detected; resumes here next time
   lastEdgeDistance = traveledDistance();
 
   dumpTrash();
