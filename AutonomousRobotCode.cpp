@@ -148,7 +148,20 @@ using namespace vex;
 // legs the robot never covered enough distance to trigger the ease-back before hitting
 // the tape -- it stayed at FAST_MULTIPLIER (2x) the whole leg. Both return-trip calls
 // now pass false and drive at normal PATH_SPEED; pathFind()'s row search passes true.
-const char* CODE_VERSION = "v28-allow-fast-ramp-param";
+// v29: TEST BUILD, continued. Reworked the whole return trip. After compressing, the
+// robot no longer continues forward in its approach heading (removed compress()'s
+// clear-drive) -- it immediately turns toward the start column (same direction it
+// already searched, away from any unscooped trash still ahead), drives a forced
+// minimum SHIFT_DISTANCE, then drives until hitting the start-column edge. Red
+// re-introduced (seesRedTape/RED_HUE_MIN/MAX/RED_BRIGHTNESS_MIN) to mark the actual
+// dump-zone segment on that edge -- if the first contact is red, dump immediately and
+// set hasSeenRed; if green, turn along the edge (right if hasSeenRed, left otherwise)
+// and search it for red. New driveToStartEdge(); goToDisposalBox() now phase-tracked
+// (0/1/2) so an object interruption mid-leg resumes correctly, matching the pattern
+// already used elsewhere for this. returnToSearch() rewritten to retrace whichever
+// legs this trip actually used, via new lastShiftEdgeDistance/lastAlongEdgeDistance/
+// lastSearchTurnSign (replacing lastCrossDistance/lastEdgeDistance from v18).
+const char* CODE_VERSION = "v29-TEST-start-edge-return";
 
 const double WHEEL_C = 200; //mm
 
@@ -189,11 +202,13 @@ const double SLOWDOWN_START_FRACTION = 0.70; // slow back to 1x once this fracti
 const double GREEN_HUE_MIN = 75;     // degrees; widen/narrow this range while watching the live readout
 const double GREEN_HUE_MAX = 160;
 const double GREEN_BRIGHTNESS_MIN = 15; // percent; lower if tape never registers, raise if false triggers
+const double RED_HUE_MIN = 340;      // degrees; red wraps around 0, so this is a two-sided range (>=340 or <=20)
+const double RED_HUE_MAX = 20;       // marks the dump-zone segment on the start-column edge (see goToDisposalBox)
+const double RED_BRIGHTNESS_MIN = 15; // percent; tune the same way as GREEN_BRIGHTNESS_MIN
 const double BLUE_HUE_MIN = 190;     // degrees; the blue return-signal tape (Jintai's idea)
 const double BLUE_HUE_MAX = 260;     // kept below RED_HUE_MIN (340) so red can't satisfy seesBlueTape() --
                                      // real blue sits around 210-250, so this still has margin
 const double BLUE_BRIGHTNESS_MIN = 15; // percent; tune the same way as GREEN_BRIGHTNESS_MIN
-const double CLEAR_DISTANCE = 150; // mm, blind drive after compressing so the sensor clears the spot
 const int STATUS_REFRESH_INTERVAL = 10; // loop iterations between screen redraws
 
 motor_group driveMotor(LeftMotor,RightMotor);
@@ -209,10 +224,16 @@ bool fieldLengthKnown = false;
 int lastTurnSign = -1; // direction of the most recent pathFind row-shift turn, needed again
                         // for the second turn when a resumed call skips recomputing it
 
-// distances measured during the most recent trip to the disposal box, so
-// returnToSearch() can retrace the same trip in reverse instead of needing real odometry
-double lastCrossDistance = 0; // the row-boundary tape crossing leg (driveUntilGreen, in goToDisposalBox)
-double lastEdgeDistance = 0;  // the edge leg along to the disposal marker (a second green tape now)
+bool hasSeenRed = false; // once true, later trips prefer turning right along the start-column
+                          // edge to search for red (learned from a previous trip); persists for the run
+
+// distances/turns used on the most recent trip to the disposal box, so returnToSearch()
+// can retrace exactly whichever legs this trip actually used, instead of needing real odometry
+int lastSearchTurnSign = -1;   // direction turned toward the start column (same as lastTurnSign at trip start)
+int lastEdgeTurnSign = 0;      // direction turned along the start-column edge, 0 if red was found
+                                // immediately and that turn never happened
+double lastShiftEdgeDistance = 0; // the forced minimum shift toward the start-column edge (driveToStartEdge)
+double lastAlongEdgeDistance = 0; // distance driven along that edge searching for red, if it wasn't immediate
 
 double normalizeAngle(double angle)
 {
@@ -528,6 +549,19 @@ bool seesGreenTape()
   return isGreen;
 }
 
+bool seesRedTape()
+  // marks the dump-zone segment on the start-column edge -- see goToDisposalBox()
+{
+  double hue = Optical11.hue();
+  double brightness = Optical11.brightness();
+  bool isRed = (hue >= RED_HUE_MIN or hue <= RED_HUE_MAX) and brightness > RED_BRIGHTNESS_MIN;
+
+  showSensorReadout(hue, brightness, Optical11.color());
+  if (isRed) showStatusLine1("Red Tape Detected");
+
+  return isRed;
+}
+
 bool seesBlueTape()
   // a signal encountered while searching -- seeing it means "head back to the
   // disposal zone now," adopted from Jintai's seesColor(BLUE_HUE_MIN, BLUE_HUE_MAX, ...)
@@ -672,8 +706,6 @@ void compress(double degree, int speed, double current_max, int & run_state)
   wait(1, seconds);
   spinCompressorTo(degree, speed, COMPRESS_PUSH_CURRENT_THRESHOLD, forward); // push inward, capped at the same |degree|
 
-  driveBlind(CLEAR_DISTANCE, PATH_SPEED); // move past the compacted spot so it doesn't immediately re-trigger scoopDetect
-
   run_state = 4; // head to the disposal box
 }
 
@@ -687,48 +719,103 @@ void dumpTrash()
 }
 
 void returnToSearch(int & run_state)
-  // retraces goToDisposalBox()'s trip in reverse using the distances measured on the
-  // way there (lastCrossDistance/lastEdgeDistance), then resumes pathFind()
+  // retraces whichever legs this trip actually used, via lastShiftEdgeDistance/
+  // lastAlongEdgeDistance/lastSearchTurnSign, then resumes pathFind()
 {
-  driveBlind(lastEdgeDistance, -PATH_SPEED);
-  rotateRobot(-TURN_ANGLE, PATH_SPEED);
-  driveBlind(SHIFT_DISTANCE, -PATH_SPEED);
-  driveBlind(lastCrossDistance, -PATH_SPEED);
-  rotateRobot(TURN_ANGLE, PATH_SPEED);
+  if (lastEdgeTurnSign != 0) // skipped if red was found immediately in phase 0 -- no edge turn to undo
+  {
+    driveBlind(lastAlongEdgeDistance, -PATH_SPEED);
+    rotateRobot(-lastEdgeTurnSign * TURN_ANGLE, PATH_SPEED);
+  }
+
+  driveBlind(lastShiftEdgeDistance, -PATH_SPEED);
+  rotateRobot(-lastSearchTurnSign * TURN_ANGLE, PATH_SPEED);
 
   run_state = 1; // resume pathFind() -- it picks back up mid-row since turnedForShift was never set for this row
 }
 
-void goToDisposalBox(int & run_state)
-  // fixed-maneuver return (adopted from Jintai's returning() idea) instead of the
-  // odometry-vector approach: turn back toward the start column, cross the nearest
-  // row-boundary green tape, turn again, then drive along that edge until the red
-  // disposal tape is found. No posX/posY/fieldLength math needed here -- compress()
-  // already drove past the compacted spot, so no extra backup step is needed either.
+void driveToStartEdge(int & run_state)
+  // turns toward the start column (same direction pathFind was already searching, away
+  // from any unscooped trash still ahead), drives a forced minimum SHIFT_DISTANCE so it
+  // clears the row it was just on, then drives until it hits the start-column edge tape
 {
-  static bool turnedToStartColumn = false; // guards the first turn so resuming after an
-                                            // object interrupts this leg doesn't re-turn
+  static bool turned = false; // guards the turn so resuming after an object interrupts
+                               // the drive-to-edge leg doesn't re-turn
 
-  if (!turnedToStartColumn)
+  if (!turned)
   {
-    rotateRobot(-TURN_ANGLE, PATH_SPEED); // toward the start column
-    turnedToStartColumn = true;
+    lastSearchTurnSign = lastTurnSign;
+    rotateRobot(lastSearchTurnSign * TURN_ANGLE, PATH_SPEED);
+    driveBlind(SHIFT_DISTANCE, PATH_SPEED);
+    lastShiftEdgeDistance = SHIFT_DISTANCE;
+    turned = true;
   }
 
-  driveUntilGreen(PATH_SPEED, run_state, false); // reach the row-boundary tape
+  LeftMotor.resetPosition();
+  RightMotor.resetPosition();
+  while (!seesGreenTape() and !seesRedTape() and !(scoopDetect(SCOOP_DETECT_MIN, SCOOP_DETECT_MAX, run_state)))
+  {
+    driveStep(PATH_SPEED);
+  }
+  finishDrive(PATH_SPEED);
   if (run_state == 2) return; // object detected; resumes here next time, skipping the turn above
-  lastCrossDistance = traveledDistance();
 
-  driveBlind(SHIFT_DISTANCE, PATH_SPEED); // cross fully over it, onto the edge column
-  rotateRobot(TURN_ANGLE, PATH_SPEED); // face down the edge column toward the disposal marker
-  driveUntilGreen(PATH_SPEED, run_state, false); // disposal marker is a second green tape now, not red
-  if (run_state == 2) return; // object detected; resumes here next time
-  lastEdgeDistance = traveledDistance();
+  turned = false;
+}
 
-  dumpTrash();
+void goToDisposalBox(int & run_state)
+  // reworked return trip: after compressing, turn toward the start column (same
+  // direction just searched, away from any trash still ahead), force a minimum shift
+  // across, then search the start-column edge for the red dump-zone segment -- if the
+  // first contact there is already red, dump immediately; otherwise turn along the
+  // edge (using where red was found last time as a hint) and keep looking.
+{
+  static int phase = 0; // 0 = drive to the start-column edge, 1 = turn and search along it for red
 
-  turnedToStartColumn = false;
-  returnToSearch(run_state);
+  if (phase == 0)
+  {
+    driveToStartEdge(run_state);
+    if (run_state == 2) return;
+
+    if (seesRedTape())
+    {
+      hasSeenRed = true;
+      lastEdgeTurnSign = 0; // no edge turn happened -- red was found immediately
+      dumpTrash();
+      phase = 0;
+      returnToSearch(run_state);
+      return;
+    }
+    phase = 1;
+  }
+
+  if (phase == 1)
+  {
+    static bool turnedAlongEdge = false;
+
+    if (!turnedAlongEdge)
+    {
+      lastEdgeTurnSign = hasSeenRed ? 1 : -1; // right if a previous trip found red this way, left otherwise
+      rotateRobot(lastEdgeTurnSign * TURN_ANGLE, PATH_SPEED);
+      turnedAlongEdge = true;
+    }
+
+    LeftMotor.resetPosition();
+    RightMotor.resetPosition();
+    while (!seesRedTape() and !(scoopDetect(SCOOP_DETECT_MIN, SCOOP_DETECT_MAX, run_state)))
+    {
+      driveStep(PATH_SPEED);
+    }
+    finishDrive(PATH_SPEED);
+    if (run_state == 2) return; // object detected; resumes here next time, skipping the turn above
+    lastAlongEdgeDistance = traveledDistance();
+    hasSeenRed = true;
+
+    dumpTrash();
+    phase = 0;
+    turnedAlongEdge = false;
+    returnToSearch(run_state);
+  }
 }
 
 int main()
