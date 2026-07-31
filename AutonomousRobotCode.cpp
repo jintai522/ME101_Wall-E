@@ -131,7 +131,11 @@ using namespace vex;
 // so passing near the red tape while searching falsely fired the go-home trigger.
 // Also corrected the attribution in these comments: the teammate's code referred to
 // throughout (COPY_PASTE_THIS_Sam_did_something.cpp, despite the filename) is Jintai's.
-const char* CODE_VERSION = "v25-blue-hue-overlap-fix";
+// v26: TEST BUILD -- compressor motion commented out inside spinCompressorTo() so the
+// drive sequence (pathFind, scoop, goToDisposalBox, returnToSearch) can be watched on
+// its own. Scooper, drivetrain, state machine and all timing are unchanged. NOT for a
+// real run: nothing gets compressed or ejected, so the robot never actually empties.
+const char* CODE_VERSION = "v26-TEST-compressor-disabled";
 
 const double WHEEL_C = 200; //mm
 
@@ -630,12 +634,25 @@ void pathFind(int & run_state)
 }
 
 void spinCompressorTo(double degree, int speed, double current_max, directionType dir)
+  // ***** COMPRESSOR DISABLED -- MOVEMENT-ONLY TEST BUILD *****
+  // The motor commands below are commented out so the robot can be watched doing
+  // pathfinding, scooping and the return-to-disposal run without the compressor
+  // actuating. Every caller, wait and drive leg is untouched, so the sequence and
+  // its timing are unchanged -- only the compressor stays still.
+  //
+  // TO RE-ENABLE: delete the printf line, uncomment the block under it, and bump
+  // CODE_VERSION off the "TEST" name so the brain screen stops advertising this.
 {
+  printf("COMPRESSOR SKIPPED (disabled) dir=%s degree=%.0f speed=%d maxAmp=%.2f\n",
+         (dir == forward) ? "forward" : "reverse", degree, speed, current_max);
+
+  /*
   MotorCompress9.resetPosition();
   MotorCompress9.spin(dir, speed, percent);
   while (fabs(MotorCompress9.position(degrees)) <= fabs(degree) and MotorCompress9.current(amp) <= current_max)
   {}
   MotorCompress9.stop(brake);
+  */
 }
 
 void compress(double degree, int speed, double current_max, int & run_state)
