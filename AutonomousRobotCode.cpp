@@ -172,7 +172,10 @@ using namespace vex;
 // lastShiftEdgeDistance/lastAlongEdgeDistance (v29, all wrong-wall). New
 // preReturnHeading (captured in compress()) lets returnToSearch() restore whatever
 // heading pathFind left off at, rather than reversing each turn individually.
-const char* CODE_VERSION = "v30-TEST-fixed-NE-corner-return";
+// v31: TEST BUILD, continued. Red only runs along the N wall, not the E wall -- the E
+// leg in goToDisposalBox() no longer checks for red (it physically can't be there),
+// removing the "caught the corner early" early-dump branch that assumed otherwise.
+const char* CODE_VERSION = "v31-TEST-e-leg-green-only";
 
 const double WHEEL_C = 200; //mm
 
@@ -779,21 +782,13 @@ void goToDisposalBox(int & run_state)
     LeftMotor.resetPosition();
     RightMotor.resetPosition();
 
-    while (!seesGreenTape() and !seesRedTape() and !(scoopDetect(SCOOP_DETECT_MIN, SCOOP_DETECT_MAX, run_state)))
+    while (!seesGreenTape() and !(scoopDetect(SCOOP_DETECT_MIN, SCOOP_DETECT_MAX, run_state)))
     {
       driveStep(PATH_SPEED);
     }
     finishDrive(PATH_SPEED);
     if (run_state == 2) return; // object detected; resumes this phase next time
     lastEastLegDistance = traveledDistance();
-
-    if (seesRedTape()) // caught the corner early -- red found before reaching the E wall's green boundary
-    {
-      dumpTrash();
-      phase = 0;
-      returnToSearch(run_state);
-      return;
-    }
 
     phase = 1;
   }
