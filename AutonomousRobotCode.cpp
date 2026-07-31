@@ -118,14 +118,36 @@ using namespace vex;
 // returnToSearch() after dumpTrash() instead of ending the program (run_state = 0 is no
 // longer reachable) -- it retraces the trip to the box in reverse using distances
 // measured on the way there (lastCrossDistance/lastEdgeDistance) and resumes pathFind().
-const char* CODE_VERSION = "v23-loop-back-to-search";
+// v24: swapped in Jintai's scoopRobot strategy for scoopermove() -- distance-based legs
+// instead of timed ones, a fast burst then an encoder-limited creep into the object,
+// and a heading restore before reversing out (via new realignToIntendedHeading()).
+// Compression is untouched and keeps this file's direction convention: MotorCompress9
+// declared un-reversed, extend on `reverse`, push inward on `forward`. Jintai's file flips
+// the motor declaration and so runs those the opposite way -- do not mix the two.
+// driveForDuration() removed (scoopermove was its only caller).
+const char* CODE_VERSION = "v24-scoop-distance-based";
 
 const double WHEEL_C = 200; //mm
 
 const double ROTATE_KP = 1.8;
 const double STRAIGHT_KP = 2;
 
-const double SCOOPSPEED = 10;
+const double SCOOPSPEED = 10; // scooper speed for dumpTrash (the scoop routine has its own below)
+
+// scoop routine, adopted from Jintai's scoopRobot: distance-based moves instead of
+// timed ones, a short fast burst into the object rather than three timed stages,
+// and a heading restore afterwards
+const double SCOOP_BACKUP_DISTANCE = 250;   // mm to reverse before dropping the scooper
+const double SCOOP_APPROACH_DISTANCE = 400; // mm to cover driving into the object
+const double SCOOP_BURST_SECONDS = 1.5;     // seconds of full-speed approach before easing off
+const int SCOOP_BURST_SPEED = 90;           // percent for that burst
+const int SCOOP_CREEP_SPEED = 45;           // percent for the rest of the approach
+const double SCOOP_BACKOUT_DISTANCE = 400;  // mm to reverse back out once the scooper is up
+const int SCOOP_DRIVE_SPEED = 30;           // percent for the backup and backout legs
+const int SCOOP_LOWER_SPEED = 30;           // percent, scooper down
+const double SCOOP_LOWER_SECONDS = 1.2;
+const int SCOOP_RAISE_SPEED = 47;           // percent, scooper up
+const double SCOOP_RAISE_SECONDS = 1;
 
 const double COMPRESS_DEGREE = -4000;
 const int COMPRESS_SPEED = 75;
@@ -199,20 +221,6 @@ void driveStep(double speed)
 
   LeftMotor.spin((leftPower >= 0) ? forward : reverse, fabs(leftPower), percent);
   RightMotor.spin((rightPower >= 0) ? forward : reverse, fabs(rightPower), percent);
-}
-
-void driveForDuration(double seconds, double speed)
-  // heading-corrected driving for a fixed duration (not a fixed distance) --
-  // used by scoopermove so the scoop-approach stays aligned instead of
-  // drifting off heading like the old raw equal-percentage commands did
-{
-  int steps = (int)(seconds * 1000 / STOP_RAMP_DELAY);
-  for (int i = 0; i < steps; i++)
-  {
-    driveStep(speed);
-    wait(STOP_RAMP_DELAY, msec);
-  }
-  driveMotor.stop(brake);
 }
 
 void finishDrive(double fromSpeed)
@@ -344,6 +352,21 @@ void snapHeadingToGrid()
   }
 }
 
+void realignToIntendedHeading(int speed)
+  // pulls the robot back onto totalHeadingDeg after a manoeuvre that knocked it
+  // off, adopted from Jintai's capture-heading-then-restore trick in scoopRobot.
+  //
+  // totalHeadingDeg must NOT move here -- this is undoing drift, not commanding a
+  // turn, and the intended heading hasn't changed. rotateRobot() always adds its
+  // angle to totalHeadingDeg (it assumes a deliberate turn), so that gets undone.
+{
+  double drift = normalizeAngle(totalHeadingDeg - BrainInertial.rotation(degrees));
+  if (fabs(drift) < 0.5) return;
+
+  rotateRobot(drift, speed);
+  totalHeadingDeg -= drift;
+}
+
 void showStatusLine1(const char* text)
 {
   Brain.Screen.setCursor(1,1);
@@ -382,31 +405,50 @@ bool scoopDetect(double min, double max, int & run_state)
   }
 }
 
-void scoopermove (double scooperSpeed, int & run_state)
-  //go back a bit
-  //bring down scooper
-  //go foward
-  //bring up scooper
-  // every drivetrain move below is heading-corrected (driveForDuration), so a
-  // misaligned approach doesn't get worse during the scoop and cause a miss
+void scoopermove (int & run_state)
+  // Jintai's scoopRobot strategy: back off a measured distance, drop the scooper,
+  // charge in with a short full-speed burst then ease the rest of the way on
+  // encoder distance, lift, straighten up, and reverse back out.
+  //
+  // Distance-based rather than timed, so a low battery or a heavy load changes
+  // how long it takes but not how far it goes -- the old timed version quietly
+  // travelled a different distance every run.
+  //
+  // The drive legs use driveStep so they stay heading-corrected (this file's
+  // convention), which Jintai's raw driveMotor.spin calls don't do.
 {
-  driveForDuration(2.8, -15);
+  driveBlind(SCOOP_BACKUP_DISTANCE, -SCOOP_DRIVE_SPEED);
+  wait(0.5, seconds);
 
-  wait(0.5,seconds);
-
-  Scooper8.spin(forward,scooperSpeed,percent);
-  wait(4, seconds);
+  Scooper8.spin(forward, SCOOP_LOWER_SPEED, percent);
+  wait(SCOOP_LOWER_SECONDS, seconds);
   Scooper8.stop();
 
-  wait(0.5,seconds);
+  wait(0.5, seconds);
 
-  driveForDuration(1, 100);
-  driveForDuration(0.5, 67);
-  driveForDuration(0.5, 23);
+  LeftMotor.resetPosition();
+  RightMotor.resetPosition();
 
-  Scooper8.spin(reverse,47,percent);
-  wait(1, seconds);
+  // full-speed burst to get the scooper under the object, distance-capped so a
+  // fast run can't blow straight past the target (Jintai's is purely timed)
+  double burstEnd = Brain.timer(seconds) + SCOOP_BURST_SECONDS;
+  while (Brain.timer(seconds) < burstEnd and traveledDistance() < SCOOP_APPROACH_DISTANCE)
+  {
+    driveStep(SCOOP_BURST_SPEED);
+  }
+  while (traveledDistance() < SCOOP_APPROACH_DISTANCE)
+  {
+    driveStep(SCOOP_CREEP_SPEED);
+  }
+  finishDrive(SCOOP_CREEP_SPEED);
+
+  Scooper8.spin(reverse, SCOOP_RAISE_SPEED, percent);
+  wait(SCOOP_RAISE_SECONDS, seconds);
   Scooper8.stop();
+
+  // the scoop shoves the robot around, so straighten up before reversing out
+  realignToIntendedHeading(PATH_SPEED);
+  driveBlind(SCOOP_BACKOUT_DISTANCE, -SCOOP_DRIVE_SPEED);
 
   run_state = 3;
 }
@@ -691,7 +733,7 @@ int main()
     }
     else if (run_state == 2)
     {
-      scoopermove(SCOOPSPEED, run_state);
+      scoopermove(run_state);
     }
     else if (run_state == 3)
     {
