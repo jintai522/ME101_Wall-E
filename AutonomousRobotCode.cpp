@@ -114,7 +114,11 @@ using namespace vex;
 // prevents the turn from re-running). Removed dead odometry code (posX/posY/trackMove/PI)
 // left over from the goToDisposalBox rewrite -- it ran trig on every finishDrive() call
 // for values nothing read anymore.
-const char* CODE_VERSION = "v22-debug-pass";
+// v23: adopted Jintai's loop-back-to-search idea. goToDisposalBox() now calls
+// returnToSearch() after dumpTrash() instead of ending the program (run_state = 0 is no
+// longer reachable) -- it retraces the trip to the box in reverse using distances
+// measured on the way there (lastCrossDistance/lastEdgeDistance) and resumes pathFind().
+const char* CODE_VERSION = "v23-loop-back-to-search";
 
 const double WHEEL_C = 200; //mm
 
@@ -161,6 +165,11 @@ bool fieldLengthKnown = false;
 
 int lastTurnSign = -1; // direction of the most recent pathFind row-shift turn, needed again
                         // for the second turn when a resumed call skips recomputing it
+
+// distances measured during the most recent trip to the disposal box, so
+// returnToSearch() can retrace the same trip in reverse instead of needing real odometry
+double lastCrossDistance = 0; // the row-boundary tape crossing leg (driveUntilGreen, in goToDisposalBox)
+double lastEdgeDistance = 0;  // the edge leg along to the red disposal tape (driveUntilRed)
 
 double normalizeAngle(double angle)
 {
@@ -605,6 +614,19 @@ void dumpTrash()
   spinCompressorTo(COMPRESS_DEGREE, COMPRESS_SPEED, COMPRESS_CURRENT_MAX, forward); // retract back
 }
 
+void returnToSearch(int & run_state)
+  // retraces goToDisposalBox()'s trip in reverse using the distances measured on the
+  // way there (lastCrossDistance/lastEdgeDistance), then resumes pathFind()
+{
+  driveBlind(lastEdgeDistance, -PATH_SPEED);
+  rotateRobot(-TURN_ANGLE, PATH_SPEED);
+  driveBlind(SHIFT_DISTANCE, -PATH_SPEED);
+  driveBlind(lastCrossDistance, -PATH_SPEED);
+  rotateRobot(TURN_ANGLE, PATH_SPEED);
+
+  run_state = 1; // resume pathFind() -- it picks back up mid-row since turnedForShift was never set for this row
+}
+
 void goToDisposalBox(int & run_state)
   // fixed-maneuver return (adopted from Jintai's returning() idea) instead of the
   // odometry-vector approach: turn back toward the start column, cross the nearest
@@ -623,15 +645,17 @@ void goToDisposalBox(int & run_state)
 
   driveUntilGreen(PATH_SPEED, run_state); // reach the row-boundary tape
   if (run_state == 2) return; // object detected; resumes here next time, skipping the turn above
+  lastCrossDistance = traveledDistance();
 
   driveBlind(SHIFT_DISTANCE, PATH_SPEED); // cross fully over it, onto the edge column
   rotateRobot(TURN_ANGLE, PATH_SPEED); // face down the edge column toward the disposal marker
   driveUntilRed(PATH_SPEED);
+  lastEdgeDistance = traveledDistance();
 
   dumpTrash();
 
   turnedToStartColumn = false;
-  run_state = 0;
+  returnToSearch(run_state);
 }
 
 int main()
