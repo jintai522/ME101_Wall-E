@@ -109,7 +109,12 @@ using namespace vex;
 // because spinCompressorUntilCurrent() had no degree cap -- now uses spinCompressorTo()
 // again (degree AND current threshold) so it retracts/pushes the same |degree| (4000)
 // as the extend step, not an unbounded spin waiting for a current spike.
-const char* CODE_VERSION = "v21-compress-degree-cap";
+// v22: full debug pass. Fixed pathFind()/goToDisposalBox() double-turning the heading
+// when an object interrupts them mid-maneuver and they get resumed (a static guard now
+// prevents the turn from re-running). Removed dead odometry code (posX/posY/trackMove/PI)
+// left over from the goToDisposalBox rewrite -- it ran trig on every finishDrive() call
+// for values nothing read anymore.
+const char* CODE_VERSION = "v22-debug-pass";
 
 const double WHEEL_C = 200; //mm
 
@@ -146,23 +151,16 @@ const int STATUS_REFRESH_INTERVAL = 10; // loop iterations between screen redraw
 
 motor_group driveMotor(LeftMotor,RightMotor);
 
-const double PI = 3.14159265358979;
-
-// dead-reckoning odometry, relative to the robot's starting point/heading
+// heading reference, relative to the robot's starting orientation (never reset mid-run)
 double totalHeadingDeg = 0;
-double posX = 0; // mm
-double posY = 0; // mm
 
 // the field's length varies box to box, so this is measured the first time a
 // row is driven cleanly end-to-end (green tape to green tape), not hardcoded
 double fieldLength = 0;
 bool fieldLengthKnown = false;
 
-void trackMove(double distanceTraveled)
-{
-  posX += distanceTraveled * sin(totalHeadingDeg * PI / 180.0);
-  posY += distanceTraveled * cos(totalHeadingDeg * PI / 180.0);
-}
+int lastTurnSign = -1; // direction of the most recent pathFind row-shift turn, needed again
+                        // for the second turn when a resumed call skips recomputing it
 
 double normalizeAngle(double angle)
 {
@@ -221,7 +219,6 @@ void finishDrive(double fromSpeed)
     wait(STOP_RAMP_DELAY, msec);
   }
   driveMotor.stop(brake);
-  trackMove(traveledDistance());
 }
 
 void configureAllSensors()
@@ -550,17 +547,27 @@ void driveBlind(double distance, int speed)
 void pathFind(int & run_state)
 {
   static int row = 0; // persists across calls so we resume where we left off after a scoop/compress
+  static bool turnedForShift = false; // true once this row's first turn has run, so resuming after an
+                                       // object interrupts the shift drive doesn't repeat that turn
 
   for (;; row++) // search indefinitely -- only a detected object breaks this loop
   {
-    driveUntilGreen(PATH_SPEED, run_state);
-    if (run_state == 2) return; // object detected mid-row; scoopermove/compress will run, then we resume this row
+    if (!turnedForShift)
+    {
+      driveUntilGreen(PATH_SPEED, run_state);
+      if (run_state == 2) return; // object detected mid-row; scoopermove/compress will run, then we resume this row
+      if (run_state == 4) return; // blue return-signal seen; goToDisposalBox will head to the red disposal tape
 
-    int turnSign = (row % 2 == 0) ? -1 : 1; // alternate direction each row transition (L-L, R-R, L-L, ...)
-    rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
+      lastTurnSign = (row % 2 == 0) ? -1 : 1; // alternate direction each row transition (L-L, R-R, L-L, ...)
+      rotateRobot(lastTurnSign * TURN_ANGLE, PATH_SPEED);
+      turnedForShift = true;
+    }
+
     straightDrive(SHIFT_DISTANCE, PATH_SPEED, run_state);
-    if (run_state == 2) return;
-    rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
+    if (run_state == 2) return; // object detected mid-shift; resumes here next time, skipping the turn above
+
+    rotateRobot(lastTurnSign * TURN_ANGLE, PATH_SPEED);
+    turnedForShift = false;
   }
 }
 
@@ -605,18 +612,25 @@ void goToDisposalBox(int & run_state)
   // disposal tape is found. No posX/posY/fieldLength math needed here -- compress()
   // already drove past the compacted spot, so no extra backup step is needed either.
 {
-  int turnSign = -1; // toward the start column -- lastTurnSign bookkeeping arrives next version
+  static bool turnedToStartColumn = false; // guards the first turn so resuming after an
+                                            // object interrupts this leg doesn't re-turn
 
-  rotateRobot(turnSign * TURN_ANGLE, PATH_SPEED);
+  if (!turnedToStartColumn)
+  {
+    rotateRobot(-TURN_ANGLE, PATH_SPEED); // toward the start column
+    turnedToStartColumn = true;
+  }
 
   driveUntilGreen(PATH_SPEED, run_state); // reach the row-boundary tape
-  driveBlind(SHIFT_DISTANCE, PATH_SPEED); // cross fully over it, onto the edge column
+  if (run_state == 2) return; // object detected; resumes here next time, skipping the turn above
 
+  driveBlind(SHIFT_DISTANCE, PATH_SPEED); // cross fully over it, onto the edge column
   rotateRobot(TURN_ANGLE, PATH_SPEED); // face down the edge column toward the disposal marker
   driveUntilRed(PATH_SPEED);
 
   dumpTrash();
 
+  turnedToStartColumn = false;
   run_state = 0;
 }
 
