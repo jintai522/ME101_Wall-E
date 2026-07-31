@@ -182,7 +182,12 @@ using namespace vex;
 // New seesBoundaryTape() (green OR red) is what the search loop checks now; red only
 // means "the dump zone" once goToDisposalBox() is deliberately looking for it after a
 // scoop -- during ordinary searching it's treated exactly like any other green crossing.
-const char* CODE_VERSION = "v32-TEST-boundary-tape";
+// v33: TEST BUILD, continued. returnToSearch()'s E-leg no longer reverses -- it now
+// turns to face W (from wherever the N-leg reverse left it, still facing N) and
+// drives forward the rest of the way back toward the row, instead of continuing to
+// back up the whole trip. The N-leg (backing straight out of the dump zone, still
+// facing N) is unchanged.
+const char* CODE_VERSION = "v33-TEST-eleg-faces-travel-direction";
 
 const double WHEEL_C = 200; //mm
 
@@ -242,9 +247,8 @@ double totalHeadingDeg = 0;
 double fieldLength = 0;
 bool fieldLengthKnown = false;
 
-int lastTurnSign = -1; // direction of the most recent pathFind row-shift turn, needed again
-                        // for the second turn when a resumed call skips recomputing it -- pathFind's
-                        // own bookkeeping now; goToDisposalBox's return heading is fixed, not relative
+int lastTurnSign = -1; // direction of the most recent pathFind row-shift turn (pathFind's own bookkeeping;
+                        // goToDisposalBox no longer needs this -- its return heading is now fixed, not relative)
 
 // the field is a rectangular green border with a red segment (the dump zone) in the
 // NE corner, where the E wall meets the N wall (N = totalHeadingDeg 0, i.e. row 0's
@@ -776,11 +780,17 @@ void returnToSearch(int & run_state)
   // pathFind left the robot at before this trip began (preReturnHeading) -- simpler
   // and more robust than reversing each turn individually, since it works regardless
   // of whether the robot was heading N, S, or mid-shift when it stopped to scoop.
+  //
+  // The two legs deliberately use different mechanics: the N-leg backs straight out
+  // of the dump zone (drives in reverse, still facing N, no turn) since that's the
+  // quickest way off the tape it just dumped on. The E-leg instead turns to face W
+  // first and drives forward the rest of the way, rather than continuing to reverse
+  // -- facing the actual direction of travel for the longer leg back toward the row.
 {
   driveBlind(lastNorthLegDistance, -PATH_SPEED); // back south, away from red -- still facing N
 
-  rotateToAbsoluteHeading(90, PATH_SPEED); // face E again
-  driveBlind(lastEastLegDistance, -PATH_SPEED); // back west, away from the E wall
+  rotateToAbsoluteHeading(-90, PATH_SPEED); // turn to face W, the direction of travel for this leg
+  driveBlind(lastEastLegDistance, PATH_SPEED); // drive forward, back toward the row
 
   rotateToAbsoluteHeading(preReturnHeading, PATH_SPEED); // restore the heading pathFind left off at
 
