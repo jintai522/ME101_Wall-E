@@ -175,7 +175,14 @@ using namespace vex;
 // v31: TEST BUILD, continued. Red only runs along the N wall, not the E wall -- the E
 // leg in goToDisposalBox() no longer checks for red (it physically can't be there),
 // removing the "caught the corner early" early-dump branch that assumed otherwise.
-const char* CODE_VERSION = "v31-TEST-e-leg-green-only";
+// v32: TEST BUILD, continued. driveUntilGreen() -- used by pathFind()'s normal row
+// search -- only ever checked seesGreenTape(), so a row ending on red (very possible
+// starting near the NE corner, since red sits right there on the N wall) would never
+// satisfy the loop condition and the robot would just keep driving into the wall.
+// New seesBoundaryTape() (green OR red) is what the search loop checks now; red only
+// means "the dump zone" once goToDisposalBox() is deliberately looking for it after a
+// scoop -- during ordinary searching it's treated exactly like any other green crossing.
+const char* CODE_VERSION = "v32-TEST-boundary-tape";
 
 const double WHEEL_C = 200; //mm
 
@@ -591,6 +598,15 @@ bool seesRedTape()
   return isRed;
 }
 
+bool seesBoundaryTape()
+  // true on green almost everywhere, OR red where a row happens to end on the
+  // dump-zone segment of the N wall. During normal searching (not yet carrying
+  // anything to dump), red means nothing special here -- it's just where this
+  // particular row's boundary happens to be, same as any other crossing.
+{
+  return seesGreenTape() or seesRedTape();
+}
+
 bool seesBlueTape()
   // a signal encountered while searching -- seeing it means "head back to the
   // disposal zone now," adopted from Jintai's seesColor(BLUE_HUE_MIN, BLUE_HUE_MAX, ...)
@@ -620,6 +636,11 @@ bool disposalSignalDetect(int & run_state)
 }
 
 void driveUntilGreen(int speed, int & run_state, bool allowFastRamp)
+  // despite the name, stops on green OR red (seesBoundaryTape) -- red only means
+  // "the dump zone" once something's actually been scooped and goToDisposalBox() is
+  // deliberately looking for it; during ordinary searching it's just where this row's
+  // boundary happens to be, and is treated exactly like green (see seesBoundaryTape).
+  //
   // allowFastRamp gates the 2x speed-up below. It only makes sense while pathFind()
   // is searching full rows -- SLOWDOWN_START_FRACTION is a fraction of a whole row's
   // length, so on the shorter return-trip legs in goToDisposalBox() the robot never
@@ -636,7 +657,7 @@ void driveUntilGreen(int speed, int & run_state, bool allowFastRamp)
   double slowdownStart = fieldLength * SLOWDOWN_START_FRACTION;
   int stepSpeed = speed;
 
-  while (!seesGreenTape() and !(scoopDetect(SCOOP_DETECT_MIN,SCOOP_DETECT_MAX,run_state)) and !(disposalSignalDetect(run_state)))
+  while (!seesBoundaryTape() and !(scoopDetect(SCOOP_DETECT_MIN,SCOOP_DETECT_MAX,run_state)) and !(disposalSignalDetect(run_state)))
   {
     stepSpeed = speed;
     if (allowFastRamp and fieldLengthKnown and traveledDistance() < slowdownStart)
@@ -648,7 +669,7 @@ void driveUntilGreen(int speed, int & run_state, bool allowFastRamp)
   double distance = traveledDistance();
   finishDrive(stepSpeed);
 
-  if (run_state != 2) // stopped because of tape, not an object -- a real tape crossing
+  if (run_state != 2 and run_state != 4) // stopped because of green tape specifically, not an object or the blue return-signal
   {
     snapHeadingToGrid();
 
