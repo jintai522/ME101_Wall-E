@@ -143,7 +143,12 @@ using namespace vex;
 // final leg now stops on a SECOND green tape instead of a dedicated red one --
 // seesRedTape()/driveUntilRed()/RED_HUE_MIN/MAX/RED_BRIGHTNESS_MIN removed, since
 // nothing else in the file used them.
-const char* CODE_VERSION = "v27-TEST-scooper-disabled";
+// v28: driveUntilGreen() gained an allowFastRamp parameter. SLOWDOWN_START_FRACTION
+// is a fraction of a full ROW's length, so on goToDisposalBox()'s shorter return-trip
+// legs the robot never covered enough distance to trigger the ease-back before hitting
+// the tape -- it stayed at FAST_MULTIPLIER (2x) the whole leg. Both return-trip calls
+// now pass false and drive at normal PATH_SPEED; pathFind()'s row search passes true.
+const char* CODE_VERSION = "v28-allow-fast-ramp-param";
 
 const double WHEEL_C = 200; //mm
 
@@ -551,7 +556,13 @@ bool disposalSignalDetect(int & run_state)
   return false;
 }
 
-void driveUntilGreen(int speed, int & run_state)
+void driveUntilGreen(int speed, int & run_state, bool allowFastRamp)
+  // allowFastRamp gates the 2x speed-up below. It only makes sense while pathFind()
+  // is searching full rows -- SLOWDOWN_START_FRACTION is a fraction of a whole row's
+  // length, so on the shorter return-trip legs in goToDisposalBox() the robot never
+  // travels far enough to trigger the ease-back before hitting the tape, and stays
+  // at 2x the entire leg. Callers on the return trip pass false to just drive at
+  // normal speed instead.
 {
   LeftMotor.resetPosition();
   RightMotor.resetPosition();
@@ -565,7 +576,7 @@ void driveUntilGreen(int speed, int & run_state)
   while (!seesGreenTape() and !(scoopDetect(SCOOP_DETECT_MIN,SCOOP_DETECT_MAX,run_state)) and !(disposalSignalDetect(run_state)))
   {
     stepSpeed = speed;
-    if (fieldLengthKnown and traveledDistance() < slowdownStart)
+    if (allowFastRamp and fieldLengthKnown and traveledDistance() < slowdownStart)
     {
       stepSpeed = speed * FAST_MULTIPLIER;
     }
@@ -613,7 +624,7 @@ void pathFind(int & run_state)
   {
     if (!turnedForShift)
     {
-      driveUntilGreen(PATH_SPEED, run_state);
+      driveUntilGreen(PATH_SPEED, run_state, true); // searching a full row -- fast ramp applies
       if (run_state == 2) return; // object detected mid-row; scoopermove/compress will run, then we resume this row
       if (run_state == 4) return; // blue return-signal seen; goToDisposalBox will head to the red disposal tape
 
@@ -704,13 +715,13 @@ void goToDisposalBox(int & run_state)
     turnedToStartColumn = true;
   }
 
-  driveUntilGreen(PATH_SPEED, run_state); // reach the row-boundary tape
+  driveUntilGreen(PATH_SPEED, run_state, false); // reach the row-boundary tape
   if (run_state == 2) return; // object detected; resumes here next time, skipping the turn above
   lastCrossDistance = traveledDistance();
 
   driveBlind(SHIFT_DISTANCE, PATH_SPEED); // cross fully over it, onto the edge column
   rotateRobot(TURN_ANGLE, PATH_SPEED); // face down the edge column toward the disposal marker
-  driveUntilGreen(PATH_SPEED, run_state); // disposal marker is a second green tape now, not red
+  driveUntilGreen(PATH_SPEED, run_state, false); // disposal marker is a second green tape now, not red
   if (run_state == 2) return; // object detected; resumes here next time
   lastEdgeDistance = traveledDistance();
 
