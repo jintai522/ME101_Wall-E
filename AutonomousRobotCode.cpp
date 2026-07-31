@@ -125,7 +125,13 @@ using namespace vex;
 // declared un-reversed, extend on `reverse`, push inward on `forward`. Jintai's file flips
 // the motor declaration and so runs those the opposite way -- do not mix the two.
 // driveForDuration() removed (scoopermove was its only caller).
-const char* CODE_VERSION = "v24-scoop-distance-based";
+// v25: BLUE_HUE_MAX 359 -> 260. It overlapped RED_HUE_MIN (340), so the red disposal
+// tape satisfied seesBlueTape() as well as seesRedTape(). driveUntilRed() was fine (it
+// only checks red), but disposalSignalDetect() runs on every step of the search loop,
+// so passing near the red tape while searching falsely fired the go-home trigger.
+// Also corrected the attribution in these comments: the teammate's code referred to
+// throughout (COPY_PASTE_THIS_Sam_did_something.cpp, despite the filename) is Jintai's.
+const char* CODE_VERSION = "v25-blue-hue-overlap-fix";
 
 const double WHEEL_C = 200; //mm
 
@@ -170,7 +176,8 @@ const double RED_HUE_MIN = 340;      // degrees; red wraps around 0, so this is 
 const double RED_HUE_MAX = 20;
 const double RED_BRIGHTNESS_MIN = 15; // percent; tune the same way as GREEN_BRIGHTNESS_MIN
 const double BLUE_HUE_MIN = 190;     // degrees; the blue return-signal tape (Jintai's idea)
-const double BLUE_HUE_MAX = 359;
+const double BLUE_HUE_MAX = 260;     // kept below RED_HUE_MIN (340) so red can't satisfy seesBlueTape() --
+                                     // real blue sits around 210-250, so this still has margin
 const double BLUE_BRIGHTNESS_MIN = 15; // percent; tune the same way as GREEN_BRIGHTNESS_MIN
 const double CLEAR_DISTANCE = 150; // mm, blind drive after compressing so the sensor clears the spot
 const int STATUS_REFRESH_INTERVAL = 10; // loop iterations between screen redraws
