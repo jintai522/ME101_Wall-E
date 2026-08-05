@@ -324,7 +324,7 @@ void scoopRobot ( int & run_state, int & scoop_count)
   rotateRobot(angleToTurn, 18);// turn to align with first backward
   straightDrive(-170,30);
 
-  if (scoop_count > 8)
+  if (scoop_count > 4)
   {
     run_state = 4; 
   }
@@ -491,7 +491,7 @@ void compressRobot(int speed, double maxAmp)
   wait(1,seconds);
   MotorCompress9.stop(brake);
 
-  wait(3,seconds);
+  wait(1,seconds);
 }
 
 
@@ -530,7 +530,7 @@ void returnSearch(double & search_width, double & search_length, bool & facingRi
   straightDrive(-search_length, 25);
   rotateRobot(90, 18); 
   straightDrive(200, 25); 
-  straightDrive(search_width, 25);
+  straightDrive(search_width + 267, 25);
   rotateRobot(90*turnSign, 18); 
   run_state = 1;
   scoop_count = 0; 
@@ -552,7 +552,7 @@ void returnStart(int & run_state)
 
 void end_or_search (double & search_width, double & search_length, bool & facingRight,int & scoop_count, int & run_state)
 {
- if (scoop_count > 8)
+ if (scoop_count > 4)
   {
     returnSearch(search_width,search_length,facingRight,run_state,scoop_count);
   } 
@@ -567,7 +567,7 @@ void end_or_search (double & search_width, double & search_length, bool & facing
 int main()
 {
   configureAllSensors();
-  int run_state = 6;
+  int run_state = 5;
   bool facingRight = true; //assume
   int scoop_count = 0;
   double search_width = 0; 
@@ -601,7 +601,7 @@ int main()
     }
     else if (run_state == 3)
     {
-      compressRobot(90, 0.3);
+      compressRobot(90, 0.2);
  
       dump (2000,70);
 
